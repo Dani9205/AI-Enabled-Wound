@@ -50,10 +50,38 @@ const User = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
-    role: {
-      type: DataTypes.ENUM('doctor', 'nurse', 'patient', 'user'),
+    request_status: {
+      type: DataTypes.ENUM('none', 'pending', 'accepted', 'rejected'),
       allowNull: false,
-      defaultValue: 'user'
+      defaultValue: 'none',
+    },
+    reviewed_by: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id',
+      },
+    },
+    reviewed_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    rejection_reason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    role: {
+      type: DataTypes.ENUM(
+        'doctor',
+        'nurse',
+        'patient',
+        'user',
+        'admin',
+        'super_admin'
+      ),
+      allowNull: false,
+      defaultValue: 'nurse',
     },
     shift: {
       type: DataTypes.STRING(100),
@@ -130,6 +158,11 @@ const User = sequelize.define(
   {
     tableName: 'users',
     underscored: true,
+    indexes: [
+      { fields: ['role'] },
+      { fields: ['request_status'] },
+      { fields: ['account_status'] },
+    ],
   }
 );
 

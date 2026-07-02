@@ -11,6 +11,15 @@ const base64Url = (input) =>
     .replace(/\+/g, '-')
     .replace(/\//g, '_');
 
+const fromBase64Url = (input) => {
+  const base64 = String(input || '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+
+  return Buffer.from(padded, 'base64').toString('utf8');
+};
+
 const hashPassword = (password) => {
   const salt = crypto.randomBytes(16).toString('hex');
 
@@ -92,11 +101,53 @@ const signToken = (payload) => {
   return `${header}.${body}.${signature}`;
 };
 
+const verifyToken = (token) => {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    throw new Error('JWT_SECRET is required');
+  }
+
+  const parts = String(token || '').split('.');
+
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  const [header, body, signature] = parts;
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(`${header}.${body}`)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  const payload = JSON.parse(fromBase64Url(body));
+
+  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+    return null;
+  }
+
+  return payload;
+};
+
 module.exports = {
   generateSixDigitCode,
   hashCode,
   hashPassword,
   signToken,
   verifyCode,
+  verifyToken,
   verifyPassword,
 };

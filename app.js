@@ -18,6 +18,7 @@ const profileRoutes = require('./routes/profileRoutes');
 const handoffRoutes = require('./routes/handoffRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 app.use(express.json());
@@ -38,10 +39,13 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/handoffs', handoffRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Start server
+const syncOptions = process.env.DB_SYNC_ALTER === 'true' ? { alter: true } : {};
+
 sequelize
-  .sync({ alter: true })
+  .sync(syncOptions)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);

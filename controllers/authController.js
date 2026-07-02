@@ -173,6 +173,16 @@ const createAccount = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+
+
+
+
 const createOrganizationAccount = async (req, res) => {
   try {
     const first_name = String(
@@ -266,6 +276,7 @@ const createOrganizationAccount = async (req, res) => {
       role,
       password_hash: hashPassword(password),
       request_accepted: false,
+      request_status: 'pending',
       terms_accepted: true,
       terms_accepted_at: new Date(),
     });
@@ -282,6 +293,7 @@ const createOrganizationAccount = async (req, res) => {
         organization_hospital: user.organization_hospital,
         organization_code: user.organization_code,
         request_accepted: user.request_accepted,
+        request_status: user.request_status,
       },
     });
   } catch (error) {
@@ -316,8 +328,12 @@ const acceptOrganizationRequest = async (req, res) => {
       });
     }
 
-    user.request_accepted = true;
-    await user.save();
+    await user.update({
+      request_accepted: true,
+      request_status: 'accepted',
+      reviewed_at: new Date(),
+      rejection_reason: null,
+    });
 
     return res.status(200).json({
       message: 'Organization request accepted successfully',
@@ -326,6 +342,8 @@ const acceptOrganizationRequest = async (req, res) => {
         organization_hospital: user.organization_hospital,
         organization_code: user.organization_code,
         request_accepted: user.request_accepted,
+        request_status: user.request_status,
+        reviewed_at: user.reviewed_at,
       },
     });
   } catch (error) {
