@@ -22,6 +22,17 @@ npm start
 
 6. Run requests from the imported collection.
 
+## Doctor Side Only
+
+For only doctor-side APIs, import:
+
+```txt
+postman/AI-Enabled-Wound-Doctor-APIs.postman_collection.json
+postman/AI-Enabled-Wound-Doctor-APIs.postman_environment.json
+```
+
+Then select the environment `AI-Enabled Wound Doctor APIs - Local`.
+
 ## How Codex Can Help
 
 Codex can update these files whenever you add/change routes:
@@ -29,6 +40,8 @@ Codex can update these files whenever you add/change routes:
 ```txt
 postman/AI-Enabled-Wound-APIs.postman_collection.json
 postman/AI-Enabled-Wound-APIs.postman_environment.json
+postman/AI-Enabled-Wound-Doctor-APIs.postman_collection.json
+postman/AI-Enabled-Wound-Doctor-APIs.postman_environment.json
 ```
 
 You can ask:

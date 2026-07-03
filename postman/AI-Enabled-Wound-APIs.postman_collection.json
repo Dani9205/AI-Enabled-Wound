@@ -282,6 +282,1630 @@
       ]
     },
     {
+      "name": "Doctor Auth",
+      "item": [
+        {
+          "name": "Account Request Options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/auth/account-request/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "auth",
+                "account-request",
+                "options"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Submit Account Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_type\": \"organization\",\n  \"first_name\": \"Dr.\",\n  \"last_name\": \"Harrison\",\n  \"email\": \"dr.harrison@centralmed.org\",\n  \"phone_number\": \"+15552345678\",\n  \"gender\": \"male\",\n  \"date_of_birth\": \"1982-01-15\",\n  \"profile_photo_url\": \"https://example.com/doctor.jpg\",\n  \"hospital_institution\": \"Central Medical Hospital\",\n  \"organization_code\": \"ORG-XXXX-2024\",\n  \"doctor_license_number\": \"DR-2024-0118\",\n  \"specializations\": [\"surgical care\", \"wound management\"],\n  \"title_designation\": \"md\",\n  \"password\": \"Password123!\",\n  \"confirm_password\": \"Password123!\",\n  \"terms_accepted\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/auth/account-request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "auth",
+                "account-request"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.doctor && json.doctor.id) { pm.environment.set('doctorId', json.doctor.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Account Request Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/auth/account-request/status?email=dr.harrison@centralmed.org",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "auth",
+                "account-request",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "email",
+                  "value": "dr.harrison@centralmed.org"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sign In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dr.harrison@centralmed.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/auth/signin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "auth",
+                "signin"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) { pm.environment.set('doctorToken', json.token); pm.environment.set('token', json.token); }",
+                  "if (json.doctor && json.doctor.id) { pm.environment.set('doctorId', json.doctor.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dr.harrison@centralmed.org\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "auth",
+                "forgot-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dr.harrison@centralmed.org\",\n  \"code\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "auth",
+                "verify-otp"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_password\": \"NewPassword123!\",\n  \"confirm_new_password\": \"NewPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "auth",
+                "reset-password"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctor Management",
+      "item": [
+        {
+          "name": "Home",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/home?doctor_id={{doctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "home"
+              ],
+              "query": [
+                {
+                  "key": "doctor_id",
+                  "value": "{{doctorId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Patients",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patients?search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patients"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Patient Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patients/{{patientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patients",
+                "{{patientId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Wound Case Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-cases/{{woundCaseId}}?doctor_id={{doctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-cases",
+                "{{woundCaseId}}"
+              ],
+              "query": [
+                {
+                  "key": "doctor_id",
+                  "value": "{{doctorId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Instructions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctor_id\": \"{{doctorId}}\",\n  \"instructions\": \"Increase dressing frequency to every 24h. Monitor for infection signs.\",\n  \"frequency\": \"Every 24 hours\",\n  \"priority\": \"high\",\n  \"dressing_type\": \"Change dressing\",\n  \"next_review_at\": \"2026-12-17\",\n  \"tags\": [\"change dressing\", \"monitor for infection\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-cases/{{woundCaseId}}/instructions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-cases",
+                "{{woundCaseId}}",
+                "instructions"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.instruction && json.instruction.id) { pm.environment.set('instructionId', json.instruction.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Instructions",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instructions\": \"Continue dressing changes every 24h and reassess drainage.\",\n  \"frequency\": \"Every 24 hours\",\n  \"priority\": \"high\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-cases/{{woundCaseId}}/instructions/{{instructionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-cases",
+                "{{woundCaseId}}",
+                "instructions",
+                "{{instructionId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Instructions",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-cases/{{woundCaseId}}/instructions/{{instructionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-cases",
+                "{{woundCaseId}}",
+                "instructions",
+                "{{instructionId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Task Complete",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_notes\": \"Reviewed wound and added clinical instructions.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/{{taskId}}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "{{taskId}}",
+                "complete"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctor Wound Details",
+      "item": [
+        {
+          "name": "Images",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-details/{{woundCaseId}}/images",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-details",
+                "{{woundCaseId}}",
+                "images"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Measurements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-details/{{woundCaseId}}/measurements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-details",
+                "{{woundCaseId}}",
+                "measurements"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Notes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-details/{{woundCaseId}}/notes?type=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-details",
+                "{{woundCaseId}}",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-details/{{woundCaseId}}/reports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-details",
+                "{{woundCaseId}}",
+                "reports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Complete Wound Report\",\n  \"report_type\": \"full\",\n  \"generated_by\": \"Dr. Harrison\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-details/{{woundCaseId}}/reports/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-details",
+                "{{woundCaseId}}",
+                "reports",
+                "generate"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.report && json.report.id) { pm.environment.set('reportId', json.report.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Report Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-details/{{woundCaseId}}/reports/{{reportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-details",
+                "{{woundCaseId}}",
+                "reports",
+                "{{reportId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Share Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{nurseId}}\",\n  \"permission\": \"can_view\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/wound-details/{{woundCaseId}}/reports/{{reportId}}/share",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "wound-details",
+                "{{woundCaseId}}",
+                "reports",
+                "{{reportId}}",
+                "share"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctor Task Management",
+      "item": [
+        {
+          "name": "Task Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/dashboard?doctor_id={{doctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "doctor_id",
+                  "value": "{{doctorId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Task List",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks?doctor_id={{doctorId}}&tab=all_tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "doctor_id",
+                  "value": "{{doctorId}}"
+                },
+                {
+                  "key": "tab",
+                  "value": "all_tasks"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Task Options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "options"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctor_id\": \"{{doctorId}}\",\n  \"title\": \"Wound dressing change\",\n  \"task_type\": \"wound\",\n  \"priority\": \"high\",\n  \"patient_id\": \"{{patientId}}\",\n  \"wound_case\": \"Diabetic Foot Ulcer - Left Heel\",\n  \"assigned_to\": \"{{nurseId}}\",\n  \"due_date\": \"2026-12-15\",\n  \"due_time\": \"09:00:00\",\n  \"task_notes\": \"Add special instructions or notes.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.task && json.task.id) { pm.environment.set('taskId', json.task.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Task Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Edit Task",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"medium\",\n  \"task_notes\": \"Updated task notes.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Complete",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_notes\": \"Wound dressing completed. Mild irrigation applied.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/{{taskId}}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "{{taskId}}",
+                "complete"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reassign Options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/{{taskId}}/reassign-options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "{{taskId}}",
+                "reassign-options"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reassign Task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigned_to\": \"{{nurseId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/{{taskId}}/reassign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "{{taskId}}",
+                "reassign"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctor Profile Settings",
+      "item": [
+        {
+          "name": "My Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Dr.\",\n  \"last_name\": \"Harrison\",\n  \"phone_number\": \"+15552345678\",\n  \"organization_hospital\": \"Central Medical Hospital\",\n  \"doctor_license_number\": \"DR-2024-0118\",\n  \"specializations\": [\"surgical care\", \"wound management\"],\n  \"title_designation\": \"md\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Security Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/security",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "security"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"Password123!\",\n  \"new_password\": \"NewPassword123!\",\n  \"confirm_password\": \"NewPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/security/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "security",
+                "change-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sign Out All Devices",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/security/sign-out-all-devices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "security",
+                "sign-out-all-devices"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Notification Preferences",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "notifications"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Notification Preferences",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_task_assigned\": true,\n  \"task_reassigned\": true,\n  \"task_cancelled\": true,\n  \"task_completed\": false,\n  \"wound_update_added\": true,\n  \"security_alerts\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "notifications"
+              ]
+            }
+          }
+        },
+        {
+          "name": "App Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/app-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "app-settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update App Settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auto_sync_when_online\": true,\n  \"save_images_offline\": true,\n  \"text_size\": \"medium\",\n  \"language\": \"english\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/app-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "app-settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Handoff Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/handoff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "handoff"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Initiate Handoff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to_doctor_id\": \"{{doctorId}}\",\n  \"patient_ids\": [\"{{patientId}}\"],\n  \"notes\": \"Transfer coverage for evening shift.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/handoff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "handoff"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sign Out",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/sign-out",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "sign-out"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Leaving the organization / hospital\",\n  \"password\": \"Password123!\",\n  \"confirm_delete\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/profile-settings/{{doctorId}}/delete-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "profile-settings",
+                "{{doctorId}}",
+                "delete-account"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctor Patient Handoff",
+      "item": [
+        {
+          "name": "Selectable Patients",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/{{doctorId}}/patients?selected_ids=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "{{doctorId}}",
+                "patients"
+              ],
+              "query": [
+                {
+                  "key": "selected_ids",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Available Staff",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/{{doctorId}}/available-staff?role=nurse",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "{{doctorId}}",
+                "available-staff"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "nurse"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Draft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctor_id\": \"{{doctorId}}\",\n  \"patient_ids\": [\"{{patientId}}\"],\n  \"shift_label\": \"Today, Morning\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "draft"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.handoff && json.handoff.id) { pm.environment.set('handoffId', json.handoff.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Select Staff",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to_staff_id\": \"{{nurseId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/{{handoffId}}/select-staff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "{{handoffId}}",
+                "select-staff"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Notes",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"general_notes\": \"Add shift summary and urgent observations.\",\n  \"per_patient_notes\": {\n    \"{{patientId}}\": \"Stage III wound - monitor closely.\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/{{handoffId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "{{handoffId}}",
+                "notes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Review Handoff",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/{{handoffId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "{{handoffId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Confirm Handoff",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shift_start\": \"Evening\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/{{handoffId}}/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "{{handoffId}}",
+                "confirm"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Handoff Success",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/patient-handoff/{{handoffId}}/success",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "patient-handoff",
+                "{{handoffId}}",
+                "success"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctor Notifications",
+      "item": [
+        {
+          "name": "All Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}?tab=all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}"
+              ],
+              "query": [
+                {
+                  "key": "tab",
+                  "value": "all"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unread Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}?tab=unread",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}"
+              ],
+              "query": [
+                {
+                  "key": "tab",
+                  "value": "unread"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Read Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}?tab=read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}"
+              ],
+              "query": [
+                {
+                  "key": "tab",
+                  "value": "read"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"new_task\",\n  \"title\": \"New Task Assigned to You\",\n  \"message\": \"Dr. Harrison assigned you a wound dressing change.\",\n  \"metadata\": {\n    \"task_id\": \"{{taskId}}\",\n    \"patient_id\": \"{{patientId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.notification && json.notification.id) { pm.environment.set('notificationId', json.notification.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark Notification Read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}",
+                "{{notificationId}}",
+                "read"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark All Read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}/mark-all-read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}",
+                "mark-all-read"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Clear Notification",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}/{{notificationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}",
+                "{{notificationId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Clear All",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/doctor/notifications/{{doctorId}}/clear-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "doctor",
+                "notifications",
+                "{{doctorId}}",
+                "clear-all"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "Admin",
       "item": [
         {

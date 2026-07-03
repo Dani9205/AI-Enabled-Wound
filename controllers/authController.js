@@ -385,7 +385,14 @@ const signin = async (req, res) => {
       });
     }
 
+    if (['deactivated', 'deleted'].includes(user.account_status)) {
+      return res.status(403).json({
+        message: 'User account is not active',
+      });
+    }
+
     user.last_login_at = new Date();
+    user.account_status = 'active';
     await user.save();
 
     const token = signToken({

@@ -19,6 +19,13 @@ const handoffRoutes = require('./routes/handoffRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const doctorAuthRoutes = require('./routes/doctorAuthRoutes');
+const doctorManagementRoutes = require('./routes/doctorManagementRoutes');
+const doctorNotificationRoutes = require('./routes/doctorNotificationRoutes');
+const doctorPatientHandoffRoutes = require('./routes/doctorPatientHandoffRoutes');
+const doctorProfileSettingsRoutes = require('./routes/doctorProfileSettingsRoutes');
+const doctorTaskRoutes = require('./routes/doctorTaskRoutes');
+const doctorWoundDetailsRoutes = require('./routes/doctorWoundDetailsRoutes');
 
 const app = express();
 app.use(express.json());
@@ -40,6 +47,13 @@ app.use('/api/handoffs', handoffRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/doctor/auth', doctorAuthRoutes);
+app.use('/api/doctor/notifications', doctorNotificationRoutes);
+app.use('/api/doctor/patient-handoff', doctorPatientHandoffRoutes);
+app.use('/api/doctor/profile-settings', doctorProfileSettingsRoutes);
+app.use('/api/doctor/tasks', doctorTaskRoutes);
+app.use('/api/doctor', doctorManagementRoutes);
+app.use('/api/doctor/wound-details', doctorWoundDetailsRoutes);
 
 // Start server
 const syncOptions = process.env.DB_SYNC_ALTER === 'true' ? { alter: true } : {};
