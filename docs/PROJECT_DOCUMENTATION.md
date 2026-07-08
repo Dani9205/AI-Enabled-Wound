@@ -123,7 +123,7 @@ npm run dev
 The server starts at:
 
 ```txt
-http://localhost:3000
+https://aiwond.appistansoft.com
 ```
 
 or the value of `PORT`.
