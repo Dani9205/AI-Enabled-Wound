@@ -4,6 +4,7 @@ const User = require('../models/userModel');
 const WoundCase = require('../models/woundCaseModel');
 const { hashPassword, verifyPassword } = require('../utils/security');
 const sequelize = require('../config/db');
+const { permanentlyDeleteUserAccount } = require('../utils/permanentDelete');
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   task_alerts: true,
@@ -509,17 +510,15 @@ const deleteAccount = async (req, res) => {
       return res.status(400).json({ message: 'confirm_delete must be true' });
     }
 
-    await user.update({
-      auth_token: null,
-      account_status: 'deleted',
-      deleted_at: new Date(),
-      security_settings: {
-        ...asObject(user.security_settings, DEFAULT_SECURITY_SETTINGS),
-        deletion_reason: reason || null,
+    const result = await permanentlyDeleteUserAccount(user);
+
+    return res.status(200).json({
+      message: 'Account permanently deleted successfully',
+      deletion: {
+        ...result,
+        reason: reason || null,
       },
     });
-
-    return res.status(200).json({ message: 'Account deleted successfully' });
   } catch (error) {
     return res.status(500).json({
       message: 'Account deletion failed',

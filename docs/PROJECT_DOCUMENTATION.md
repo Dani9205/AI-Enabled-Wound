@@ -1,6 +1,6 @@
 # AI-Enabled Wound APIs - Project Documentation
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## 1. Project Overview
 
@@ -96,6 +96,11 @@ DB_DIALECT=mysql
 JWT_SECRET=your_secret_key
 JWT_EXPIRES_IN_SECONDS=86400
 DB_SYNC_ALTER=false
+APPLE_BUNDLE_ID=com.yourcompany.yourapp
+APP_STORE_BASIC_PRODUCT_ID=com.yourcompany.yourapp.subscription.basic.monthly
+APP_STORE_PROFESSIONAL_PRODUCT_ID=com.yourcompany.yourapp.subscription.professional.monthly
+APP_STORE_ORGANIZATION_PRODUCT_ID=com.yourcompany.yourapp.subscription.organization.monthly
+APPLE_STOREKIT_VERIFY_SIGNATURE=true
 ```
 
 Mail-related variables may also be required by `utils/mailer.js`, depending on the configured mail transport.
@@ -224,7 +229,7 @@ Routes are mounted in `app.js`.
 | `/api/profile` | `routes/profileRoutes.js` | Nurse/common profile and settings. |
 | `/api/handoffs` | `routes/handoffRoutes.js` | Nurse patient handoff flow. |
 | `/api/notifications` | `routes/notificationRoutes.js` | Common notification APIs. |
-| `/api/subscriptions` | `routes/subscriptionRoutes.js` | Plans, checkout, subscribe, usage, cancel. |
+| `/api/subscriptions` | `routes/subscriptionRoutes.js` | Plans, checkout, subscribe, StoreKit verify/restore, usage, cancel. |
 | `/api/admin` | `routes/adminRoutes.js` | Admin login. |
 | `/api/doctor/auth` | `routes/doctorAuthRoutes.js` | Doctor signup/signin/password reset. |
 | `/api/doctor` | `routes/doctorManagementRoutes.js` | Doctor home, patients, wound cases, instructions. |
@@ -362,6 +367,8 @@ Routes are mounted in `app.js`.
 | `GET` | `/plans/:planCode` | Get plan detail. |
 | `POST` | `/checkout-session` | Create checkout session data. |
 | `POST` | `/subscribe` | Create/update subscription. |
+| `POST` | `/apple/verify` | Verify a StoreKit 2 signed transaction and update subscription. |
+| `POST` | `/apple/restore` | Verify restored StoreKit 2 transactions and restore subscription. |
 | `GET` | `/current/:userId` | Get current subscription. |
 | `GET` | `/manage/:userId` | Get subscription management data. |
 | `PATCH` | `/usage/:userId` | Update usage. |

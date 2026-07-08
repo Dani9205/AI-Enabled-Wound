@@ -1,6 +1,7 @@
 const Patient = require('../models/patientModel');
 const WoundCase = require('../models/woundCaseModel');
 const { hashPassword, verifyPassword } = require('../utils/security');
+const { permanentlyDeleteUserAccount } = require('../utils/permanentDelete');
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   patient_wound_alerts: true,
@@ -463,19 +464,14 @@ const deleteAccount = async (req, res) => {
       return res.status(400).json({ message: 'confirm_delete must be true' });
     }
 
-    await req.user.update({
-      auth_token: null,
-      account_status: 'deleted',
-      deleted_at: new Date(),
-      security_settings: {
-        ...asObject(req.user.security_settings, DEFAULT_SECURITY_SETTINGS),
-        deletion_reason: reason || null,
-        deleted_at: new Date().toISOString(),
-      },
-    });
+    const result = await permanentlyDeleteUserAccount(req.user);
 
     return res.status(200).json({
-      message: 'Patient account deleted successfully',
+      message: 'Patient account permanently deleted successfully',
+      deletion: {
+        ...result,
+        reason: reason || null,
+      },
     });
   } catch (error) {
     return res.status(500).json({

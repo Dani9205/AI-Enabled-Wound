@@ -1,5 +1,33 @@
+const crypto = require('crypto');
 const Subscription = require('../models/subscriptionModel');
 const User = require('../models/userModel');
+
+const DEFAULT_APP_STORE_PRODUCT_IDS = {
+  basic: 'com.aiwound.subscription.basic.monthly',
+  professional: 'com.aiwound.subscription.professional.monthly',
+  organization: 'com.aiwound.subscription.organization.monthly',
+};
+
+const getConfiguredAppStoreProductIds = () => {
+  const fromJson = cleanJsonObject(process.env.APP_STORE_PRODUCT_IDS);
+
+  return {
+    ...DEFAULT_APP_STORE_PRODUCT_IDS,
+    ...fromJson,
+    basic:
+      cleanString(process.env.APP_STORE_BASIC_PRODUCT_ID) ||
+      fromJson.basic ||
+      DEFAULT_APP_STORE_PRODUCT_IDS.basic,
+    professional:
+      cleanString(process.env.APP_STORE_PROFESSIONAL_PRODUCT_ID) ||
+      fromJson.professional ||
+      DEFAULT_APP_STORE_PRODUCT_IDS.professional,
+    organization:
+      cleanString(process.env.APP_STORE_ORGANIZATION_PRODUCT_ID) ||
+      fromJson.organization ||
+      DEFAULT_APP_STORE_PRODUCT_IDS.organization,
+  };
+};
 
 const PLANS = [
   {
@@ -119,6 +147,19 @@ const cleanString = (value) => {
   return trimmed || undefined;
 };
 
+function cleanJsonObject(value) {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
 const parseId = (value) => {
   if (value === undefined || value === null || value === '') {
     return null;
@@ -162,6 +203,23 @@ const addDays = (date, days) => {
 };
 
 const getPlan = (code) => PLANS.find((plan) => plan.code === code);
+
+const plansWithStoreProducts = () => {
+  const productIds = getConfiguredAppStoreProductIds();
+
+  return PLANS.map((plan) => ({
+    ...plan,
+    app_store_product_id: productIds[plan.code] || null,
+  }));
+};
+
+const getPlanByAppStoreProductId = (productId) => {
+  const normalizedProductId = cleanString(productId);
+  const productIds = getConfiguredAppStoreProductIds();
+  const planCode = Object.keys(productIds).find((code) => productIds[code] === normalizedProductId);
+
+  return planCode ? getPlan(planCode) : null;
+};
 
 const subscriptionResponse = (subscription) => {
   if (!subscription) {
@@ -208,7 +266,7 @@ const ensureUser = async (userId) => {
 };
 
 const getPlans = async (req, res) => {
-  return res.status(200).json({ plans: PLANS });
+  return res.status(200).json({ plans: plansWithStoreProducts() });
 };
 
 const getPlanDetail = async (req, res) => {
@@ -218,11 +276,19 @@ const getPlanDetail = async (req, res) => {
     return res.status(404).json({ message: 'Plan not found' });
   }
 
-  return res.status(200).json({ plan });
+  return res.status(200).json({
+    plan: {
+      ...plan,
+      app_store_product_id: getConfiguredAppStoreProductIds()[plan.code] || null,
+    },
+  });
 };
 
 const buildCheckoutPayload = (plan, provider) => ({
-  plan,
+  plan: {
+    ...plan,
+    app_store_product_id: getConfiguredAppStoreProductIds()[plan.code] || null,
+  },
   provider,
   payment_summary: {
     title: `AI-Enabled Wound ${plan.name}`,
@@ -236,11 +302,167 @@ const buildCheckoutPayload = (plan, provider) => ({
     supported: provider === 'apple_pay' || provider === 'app_store',
     merchant_label: 'AI-Enabled Wound',
   },
+  app_store: {
+    supported: provider === 'app_store',
+    product_id: getConfiguredAppStoreProductIds()[plan.code] || null,
+  },
   google_pay: {
     supported: provider === 'google_pay',
     merchant_label: 'AI-Enabled Wound',
   },
 });
+
+const base64UrlDecode = (value) => {
+  const input = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = input.padEnd(input.length + ((4 - (input.length % 4)) % 4), '=');
+  return Buffer.from(padded, 'base64');
+};
+
+const parseStoreKitJws = (signedPayload) => {
+  const jws = cleanString(signedPayload);
+
+  if (!jws) {
+    throw new Error('signed_transaction_info is required');
+  }
+
+  const parts = jws.split('.');
+
+  if (parts.length !== 3) {
+    throw new Error('Invalid StoreKit signed transaction format');
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  const header = JSON.parse(base64UrlDecode(encodedHeader).toString('utf8'));
+  const payload = JSON.parse(base64UrlDecode(encodedPayload).toString('utf8'));
+
+  return {
+    header,
+    payload,
+    signature: base64UrlDecode(encodedSignature),
+    signingInput: Buffer.from(`${encodedHeader}.${encodedPayload}`),
+  };
+};
+
+const certificateToPem = (certificate) => {
+  const body = String(certificate || '').match(/.{1,64}/g);
+
+  if (!body) {
+    throw new Error('Apple transaction certificate is missing');
+  }
+
+  return `-----BEGIN CERTIFICATE-----\n${body.join('\n')}\n-----END CERTIFICATE-----`;
+};
+
+const shouldVerifyStoreKitSignature = () =>
+  process.env.APPLE_STOREKIT_VERIFY_SIGNATURE !== 'false';
+
+const verifyStoreKitTransaction = (signedTransactionInfo) => {
+  const parsed = parseStoreKitJws(signedTransactionInfo);
+
+  if (parsed.header.alg !== 'ES256') {
+    throw new Error('Unsupported Apple transaction signature algorithm');
+  }
+
+  if (shouldVerifyStoreKitSignature()) {
+    if (!Array.isArray(parsed.header.x5c) || !parsed.header.x5c[0]) {
+      throw new Error('Apple transaction certificate chain is missing');
+    }
+
+    const publicKey = crypto.createPublicKey(certificateToPem(parsed.header.x5c[0]));
+    const isValid = crypto.verify('sha256', parsed.signingInput, {
+      key: publicKey,
+      dsaEncoding: 'ieee-p1363',
+    }, parsed.signature);
+
+    if (!isValid) {
+      throw new Error('Apple transaction signature verification failed');
+    }
+  }
+
+  const expectedBundleId = cleanString(process.env.APPLE_BUNDLE_ID);
+
+  if (expectedBundleId && parsed.payload.bundleId !== expectedBundleId) {
+    throw new Error('Apple transaction bundleId does not match this app');
+  }
+
+  return parsed.payload;
+};
+
+const storeKitDate = (value) => {
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp) : null;
+};
+
+const getAppleSubscriptionStatus = (transaction) => {
+  if (transaction.revocationDate) {
+    return 'cancelled';
+  }
+
+  const expiresAt = storeKitDate(transaction.expiresDate);
+
+  if (expiresAt && expiresAt.getTime() <= Date.now()) {
+    return 'expired';
+  }
+
+  return 'active';
+};
+
+const upsertAppleSubscription = async ({ user, transaction, signedTransactionInfo, source }) => {
+  const plan = getPlanByAppStoreProductId(transaction.productId);
+
+  if (!plan) {
+    return { error: 'Unknown App Store product_id' };
+  }
+
+  const originalTransactionId =
+    cleanString(transaction.originalTransactionId) || cleanString(transaction.transactionId);
+  const existing = await Subscription.findOne({
+    where: { user_id: user.id },
+    order: [['createdAt', 'DESC']],
+  });
+  const purchaseDate = storeKitDate(transaction.purchaseDate) || new Date();
+  const expiresDate = storeKitDate(transaction.expiresDate);
+  const status = getAppleSubscriptionStatus(transaction);
+  const payload = {
+    user_id: user.id,
+    plan_code: plan.code,
+    plan_name: plan.name,
+    billing_provider: 'app_store',
+    provider_subscription_id: originalTransactionId,
+    currency: plan.currency,
+    amount: plan.amount,
+    interval: plan.interval,
+    status,
+    usage: {
+      ai_notes: 0,
+      patients: 0,
+      ...asObject(existing && existing.usage),
+    },
+    features: plan.features,
+    trial_ends_at: null,
+    current_period_start: purchaseDate,
+    current_period_end: expiresDate,
+    cancelled_at: status === 'cancelled' ? storeKitDate(transaction.revocationDate) || new Date() : null,
+    metadata: {
+      ...asObject(existing && existing.metadata),
+      source: cleanString(source) || 'ios_storekit2',
+      app_store_product_id: transaction.productId,
+      transaction_id: cleanString(transaction.transactionId) || null,
+      original_transaction_id: originalTransactionId || null,
+      web_order_line_item_id: cleanString(transaction.webOrderLineItemId) || null,
+      environment: cleanString(transaction.environment) || null,
+      ownership_type: cleanString(transaction.inAppOwnershipType) || null,
+      transaction_reason: cleanString(transaction.transactionReason) || null,
+      signed_transaction_info: signedTransactionInfo,
+      verified_at: new Date().toISOString(),
+    },
+  };
+  const subscription = existing
+    ? await existing.update(payload)
+    : await Subscription.create(payload);
+
+  return { subscription, plan };
+};
 
 const createCheckoutSession = async (req, res) => {
   try {
@@ -333,6 +555,122 @@ const subscribe = async (req, res) => {
   }
 };
 
+const verifyAppleSubscription = async (req, res) => {
+  try {
+    const { user, error } = await ensureUser(req.body.user_id || req.body.userId);
+
+    if (error) {
+      return res.status(error === 'User not found' ? 404 : 400).json({ message: error });
+    }
+
+    const signedTransactionInfo = cleanString(
+      req.body.signed_transaction_info || req.body.signedTransactionInfo
+    );
+    const transaction = verifyStoreKitTransaction(signedTransactionInfo);
+
+    if (req.body.product_id && transaction.productId !== req.body.product_id) {
+      return res.status(400).json({ message: 'product_id does not match Apple transaction' });
+    }
+
+    if (req.body.transaction_id && transaction.transactionId !== String(req.body.transaction_id)) {
+      return res.status(400).json({ message: 'transaction_id does not match Apple transaction' });
+    }
+
+    const result = await upsertAppleSubscription({
+      user,
+      transaction,
+      signedTransactionInfo,
+      source: req.body.source,
+    });
+
+    if (result.error) {
+      return res.status(400).json({ message: result.error });
+    }
+
+    return res.status(200).json({
+      message: 'Apple subscription verified successfully',
+      verification: {
+        provider: 'app_store',
+        product_id: transaction.productId,
+        transaction_id: transaction.transactionId,
+        original_transaction_id: transaction.originalTransactionId || transaction.transactionId,
+        environment: transaction.environment || null,
+        status: getAppleSubscriptionStatus(transaction),
+      },
+      subscription: subscriptionResponse(result.subscription),
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: 'Apple subscription verification failed',
+      error: error.message,
+    });
+  }
+};
+
+const restoreApplePurchases = async (req, res) => {
+  try {
+    const { user, error } = await ensureUser(req.body.user_id || req.body.userId);
+
+    if (error) {
+      return res.status(error === 'User not found' ? 404 : 400).json({ message: error });
+    }
+
+    const signedTransactions = Array.isArray(req.body.signed_transactions)
+      ? req.body.signed_transactions
+      : Array.isArray(req.body.signedTransactions)
+        ? req.body.signedTransactions
+        : [];
+
+    if (!signedTransactions.length) {
+      return res.status(400).json({ message: 'signed_transactions is required' });
+    }
+
+    const verifiedTransactions = signedTransactions.map((signedTransactionInfo) => ({
+      signedTransactionInfo,
+      transaction: verifyStoreKitTransaction(signedTransactionInfo),
+    }));
+    const knownPlanTransactions = verifiedTransactions.filter(({ transaction }) =>
+      getPlanByAppStoreProductId(transaction.productId)
+    );
+
+    if (!knownPlanTransactions.length) {
+      return res.status(400).json({ message: 'No restorable subscription product found' });
+    }
+
+    const latest = knownPlanTransactions.sort((left, right) => {
+      const leftDate = Number(left.transaction.expiresDate || left.transaction.purchaseDate || 0);
+      const rightDate = Number(right.transaction.expiresDate || right.transaction.purchaseDate || 0);
+      return rightDate - leftDate;
+    })[0];
+    const result = await upsertAppleSubscription({
+      user,
+      transaction: latest.transaction,
+      signedTransactionInfo: latest.signedTransactionInfo,
+      source: req.body.source || 'ios_restore_purchases',
+    });
+
+    if (result.error) {
+      return res.status(400).json({ message: result.error });
+    }
+
+    return res.status(200).json({
+      message: 'Apple purchases restored successfully',
+      restored: knownPlanTransactions.map(({ transaction }) => ({
+        product_id: transaction.productId,
+        transaction_id: transaction.transactionId,
+        original_transaction_id: transaction.originalTransactionId || transaction.transactionId,
+        status: getAppleSubscriptionStatus(transaction),
+      })),
+      subscription: subscriptionResponse(result.subscription),
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: 'Apple purchases restore failed',
+      error: error.message,
+    });
+  }
+};
+
 const getCurrentSubscription = async (req, res) => {
   try {
     const { user, error } = await ensureUser(req.params.userId || req.query.user_id);
@@ -348,7 +686,7 @@ const getCurrentSubscription = async (req, res) => {
 
     return res.status(200).json({
       subscription: subscriptionResponse(subscription),
-      available_plans: PLANS,
+      available_plans: plansWithStoreProducts(),
     });
   } catch (error) {
     return res.status(500).json({
@@ -381,7 +719,7 @@ const getManageSubscription = async (req, res) => {
             ai_notes: 0,
             patients: 0,
           },
-      upgrade_options: PLANS.filter((plan) => plan.code !== currentPlanCode),
+      upgrade_options: plansWithStoreProducts().filter((plan) => plan.code !== currentPlanCode),
       can_cancel: Boolean(subscription && ['active', 'trialing'].includes(subscription.status)),
     });
   } catch (error) {
@@ -476,6 +814,8 @@ module.exports = {
   getManageSubscription,
   getPlanDetail,
   getPlans,
+  restoreApplePurchases,
   subscribe,
   updateUsage,
+  verifyAppleSubscription,
 };

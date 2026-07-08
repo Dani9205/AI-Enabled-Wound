@@ -1,5 +1,6 @@
 const Patient = require('../models/patientModel');
 const User = require('../models/userModel');
+const { permanentlyDeletePatientRecord } = require('../utils/permanentDelete');
 
 const VALID_GENDERS = ['male', 'female', 'other'];
 
@@ -299,10 +300,11 @@ const deletePatient = async (req, res) => {
       return res.status(404).json({ message: 'Patient not found' });
     }
 
-    await patient.destroy();
+    const result = await permanentlyDeletePatientRecord(patient);
 
     return res.status(200).json({
-      message: 'Patient deleted successfully',
+      message: 'Patient permanently deleted successfully',
+      deletion: result,
     });
   } catch (error) {
     return res.status(500).json({

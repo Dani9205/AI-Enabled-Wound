@@ -3,6 +3,7 @@ const Task = require('../models/taskModel');
 const User = require('../models/userModel');
 const WoundCase = require('../models/woundCaseModel');
 const { hashPassword, verifyPassword } = require('../utils/security');
+const { permanentlyDeleteUserAccount } = require('../utils/permanentDelete');
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   new_task_assigned: true,
@@ -624,19 +625,14 @@ const deleteAccount = async (req, res) => {
       return res.status(400).json({ message: 'confirm_delete must be true' });
     }
 
-    await doctor.update({
-      auth_token: null,
-      account_status: 'deleted',
-      deleted_at: new Date(),
-      security_settings: {
-        ...asObject(doctor.security_settings, DEFAULT_SECURITY_SETTINGS),
-        deletion_reason: reason || null,
-        deleted_at: new Date().toISOString(),
-      },
-    });
+    const result = await permanentlyDeleteUserAccount(doctor);
 
     return res.status(200).json({
-      message: 'Doctor account deleted successfully',
+      message: 'Doctor account permanently deleted successfully',
+      deletion: {
+        ...result,
+        reason: reason || null,
+      },
     });
   } catch (error) {
     return res.status(500).json({
