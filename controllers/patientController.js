@@ -122,9 +122,17 @@ const ensureNurseExists = async (nurseId) => {
   return null;
 };
 
+const isNurse = (req) => req.user?.role === 'nurse';
 
+const getNurseScopedPatient = async (req, id) => {
+  const where = { id };
 
+  if (isNurse(req)) {
+    where.nurse_id = req.user.id;
+  }
 
+  return Patient.findOne({ where });
+};
 
 
 
@@ -132,6 +140,10 @@ const ensureNurseExists = async (nurseId) => {
 const createPatient = async (req, res) => {
   try {
     const payload = buildPatientPayload(req.body);
+    if (isNurse(req)) {
+      payload.nurse_id = req.user.id;
+    }
+
     const validationError = validatePatientPayload(payload);
 
     if (validationError) {
@@ -179,7 +191,7 @@ const getPatients = async (req, res) => {
     const { id } = req.params;
 
     if (id) {
-      const patient = await Patient.findByPk(id);
+      const patient = await getNurseScopedPatient(req, id);
 
       if (!patient) {
         return res.status(404).json({ message: 'Patient not found' });
@@ -188,7 +200,16 @@ const getPatients = async (req, res) => {
       return res.status(200).json({ patient: patientResponse(patient) });
     }
 
-    const patients = await Patient.findAll({ order: [['createdAt', 'DESC']] });
+    const where = {};
+
+    if (isNurse(req)) {
+      where.nurse_id = req.user.id;
+    }
+
+    const patients = await Patient.findAll({
+      where,
+      order: [['createdAt', 'DESC']],
+    });
 
     return res.status(200).json({
       patients: patients.map(patientResponse),
@@ -213,13 +234,17 @@ const getPatients = async (req, res) => {
 const updatePatient = async (req, res) => {
   try {
     const { id } = req.params;
-    const patient = await Patient.findByPk(id);
+    const patient = await getNurseScopedPatient(req, id);
 
     if (!patient) {
       return res.status(404).json({ message: 'Patient not found' });
     }
 
     const payload = buildPatientPayload(req.body, { partial: true });
+    if (isNurse(req)) {
+      delete payload.nurse_id;
+    }
+
     const validationError = validatePatientPayload(payload, { partial: true });
 
     if (validationError) {
@@ -268,7 +293,7 @@ const updatePatient = async (req, res) => {
 const deletePatient = async (req, res) => {
   try {
     const { id } = req.params;
-    const patient = await Patient.findByPk(id);
+    const patient = await getNurseScopedPatient(req, id);
 
     if (!patient) {
       return res.status(404).json({ message: 'Patient not found' });

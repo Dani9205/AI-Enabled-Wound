@@ -7,8 +7,11 @@ const {
   reassignTask,
   updateTask,
 } = require('../controllers/taskController');
+const { authenticateToken, requireRoles } = require('../middleware/authMiddleware');
 
 const router = express.Router();
+
+router.use(authenticateToken, requireRoles('nurse'));
 
 router.post('/create-task', createTask);
 router.get('/get-task', getTasks);

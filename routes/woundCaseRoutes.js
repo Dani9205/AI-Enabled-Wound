@@ -22,8 +22,11 @@ const {
   shareReport,
   updateWoundCase,
 } = require('../controllers/woundCaseController');
+const { authenticateToken, requireRoles } = require('../middleware/authMiddleware');
 
 const router = express.Router();
+
+router.use(authenticateToken, requireRoles('nurse'));
 
 router.post('/create-wound-case', createWoundCase);
 router.get('/get-wound-case', getWoundCases);

@@ -60,6 +60,35 @@ const asArray = (value) => {
   return [];
 };
 
+const isNurse = (req) => req.user?.role === 'nurse';
+
+const getNursePatientIds = async (nurseId) => {
+  const patients = await Patient.findAll({
+    where: { nurse_id: nurseId },
+    attributes: ['id'],
+  });
+
+  return patients.map((patient) => patient.id);
+};
+
+const getScopedWoundCase = async (req, id) => {
+  const woundCase = await WoundCase.findByPk(id);
+
+  if (!woundCase) {
+    return null;
+  }
+
+  if (!isNurse(req)) {
+    return woundCase;
+  }
+
+  const patient = await Patient.findOne({
+    where: { id: woundCase.patient_id, nurse_id: req.user.id },
+  });
+
+  return patient ? woundCase : null;
+};
+
 const currentTimestamp = () => new Date().toISOString();
 
 const makeId = (prefix) =>
@@ -309,13 +338,21 @@ const validateWoundCasePayload = (payload, { partial = false } = {}) => {
   return null;
 };
 
-const ensurePatientExists = async (patientId) => {
+const ensurePatientExists = async (patientId, req) => {
   if (!patientId) {
     return null;
   }
 
   const patient = await Patient.findByPk(patientId);
-  return patient ? null : 'Patient not found';
+  if (!patient) {
+    return 'Patient not found';
+  }
+
+  if (isNurse(req) && Number(patient.nurse_id) !== Number(req.user.id)) {
+    return 'Patient not found';
+  }
+
+  return null;
 };
 
 const createWoundCase = async (req, res) => {
@@ -327,7 +364,7 @@ const createWoundCase = async (req, res) => {
       return res.status(400).json({ message: validationError });
     }
 
-    const patientError = await ensurePatientExists(payload.patient_id);
+    const patientError = await ensurePatientExists(payload.patient_id, req);
     if (patientError) {
       return res.status(404).json({ message: patientError });
     }
@@ -356,7 +393,7 @@ const getWoundCases = async (req, res) => {
     const { id } = req.params;
 
     if (id) {
-      const woundCase = await WoundCase.findByPk(id);
+      const woundCase = await getScopedWoundCase(req, id);
 
       if (!woundCase) {
         return res.status(404).json({ message: 'Wound case not found' });
@@ -366,9 +403,27 @@ const getWoundCases = async (req, res) => {
     }
 
     const where = {};
+    let nursePatientIds = null;
+
+    if (isNurse(req)) {
+      nursePatientIds = await getNursePatientIds(req.user.id);
+
+      if (!nursePatientIds.length) {
+        return res.status(200).json({ wound_cases: [] });
+      }
+    }
 
     if (req.query.patient_id) {
+      if (
+        isNurse(req) &&
+        !nursePatientIds.map(String).includes(String(req.query.patient_id))
+      ) {
+        return res.status(200).json({ wound_cases: [] });
+      }
+
       where.patient_id = req.query.patient_id;
+    } else if (isNurse(req)) {
+      where.patient_id = nursePatientIds;
     }
 
     if (req.query.status) {
@@ -406,7 +461,7 @@ const getWoundCases = async (req, res) => {
 const updateWoundCase = async (req, res) => {
   try {
     const { id } = req.params;
-    const woundCase = await WoundCase.findByPk(id);
+    const woundCase = await getScopedWoundCase(req, id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -419,7 +474,7 @@ const updateWoundCase = async (req, res) => {
       return res.status(400).json({ message: validationError });
     }
 
-    const patientError = await ensurePatientExists(payload.patient_id);
+    const patientError = await ensurePatientExists(payload.patient_id, req);
     if (patientError) {
       return res.status(404).json({ message: patientError });
     }
@@ -441,7 +496,7 @@ const updateWoundCase = async (req, res) => {
 const addWoundImage = async (req, res) => {
   try {
     const { id } = req.params;
-    const woundCase = await WoundCase.findByPk(id);
+    const woundCase = await getScopedWoundCase(req, id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -480,7 +535,7 @@ const addWoundImage = async (req, res) => {
 const deleteWoundImage = async (req, res) => {
   try {
     const { id, imageId } = req.params;
-    const woundCase = await WoundCase.findByPk(id);
+    const woundCase = await getScopedWoundCase(req, id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -513,7 +568,7 @@ const deleteWoundImage = async (req, res) => {
 const addMeasurement = async (req, res) => {
   try {
     const { id } = req.params;
-    const woundCase = await WoundCase.findByPk(id);
+    const woundCase = await getScopedWoundCase(req, id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -571,7 +626,7 @@ const addMeasurement = async (req, res) => {
 
 const getTimeline = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -593,7 +648,7 @@ const getTimeline = async (req, res) => {
 
 const getImages = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -610,7 +665,7 @@ const getImages = async (req, res) => {
 
 const getMeasurements = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -635,7 +690,7 @@ const getMeasurements = async (req, res) => {
 
 const addClinicalNote = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -667,7 +722,7 @@ const addClinicalNote = async (req, res) => {
 
 const getClinicalNotes = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -686,7 +741,7 @@ const getClinicalNotes = async (req, res) => {
 
 const generateSoapNote = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -734,7 +789,7 @@ const generateSoapNote = async (req, res) => {
 
 const addReport = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -762,7 +817,7 @@ const addReport = async (req, res) => {
 
 const getReports = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -802,7 +857,7 @@ const buildReportData = (woundCase) => {
 
 const generateReport = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -843,7 +898,7 @@ const findReport = (woundCase, reportId) =>
 
 const getReportPreview = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -869,7 +924,7 @@ const getReportPreview = async (req, res) => {
 
 const shareReport = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -921,7 +976,7 @@ const shareReport = async (req, res) => {
 
 const downloadReport = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -949,7 +1004,7 @@ const downloadReport = async (req, res) => {
 
 const saveVoiceDictation = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -988,7 +1043,7 @@ const saveVoiceDictation = async (req, res) => {
 
 const addWoundUpdate = async (req, res) => {
   try {
-    const woundCase = await WoundCase.findByPk(req.params.id);
+    const woundCase = await getScopedWoundCase(req, req.params.id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });
@@ -1061,7 +1116,7 @@ const addWoundUpdate = async (req, res) => {
 const deleteWoundCase = async (req, res) => {
   try {
     const { id } = req.params;
-    const woundCase = await WoundCase.findByPk(id);
+    const woundCase = await getScopedWoundCase(req, id);
 
     if (!woundCase) {
       return res.status(404).json({ message: 'Wound case not found' });

@@ -114,6 +114,10 @@ const taskResponse = async (task, patientMap, assigneeMap) => {
 };
 
 const buildScope = (req) => {
+  if (req.user?.role === 'nurse') {
+    return { nurseId: req.user.id };
+  }
+
   const nurseId = parseId(req.query.nurse_id || req.query.nurseId || req.query.user_id || req.query.userId);
 
   return {
@@ -140,7 +144,7 @@ const getDashboardStats = async (req, res) => {
     const scopedPatientIds = await getScopedPatientIds(nurseId);
     const patientWhere = nurseId ? { nurse_id: nurseId } : {};
     const woundWhere = scopedPatientIds ? { patient_id: scopedPatientIds } : {};
-    const taskWhere = nurseId ? { assigned_to: nurseId } : {};
+    const taskWhere = nurseId ? { assigned_by: nurseId } : {};
 
     const [patients, wounds, high, tasks, notifications] = await Promise.all([
       Patient.count({ where: patientWhere }),
@@ -179,7 +183,7 @@ const getTodayTasks = async (req, res) => {
     const limit = Number(req.query.limit) || 10;
     const where = {
       status: 'pending',
-      ...(nurseId ? { assigned_to: nurseId } : {}),
+      ...(nurseId ? { assigned_by: nurseId } : {}),
     };
 
     if (req.query.today !== 'false') {
@@ -292,7 +296,7 @@ const getRecentUpdates = async (req, res) => {
 const getHomeDashboard = async (req, res) => {
   try {
     const userId = parseId(req.query.user_id || req.query.userId || req.query.nurse_id || req.query.nurseId);
-    const user = userId && !Number.isNaN(userId) ? await User.findByPk(userId) : null;
+    const user = req.user || (userId && !Number.isNaN(userId) ? await User.findByPk(userId) : null);
 
     const statsResult = await new Promise((resolve, reject) => {
       const mockRes = {

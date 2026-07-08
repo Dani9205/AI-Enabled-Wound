@@ -33,6 +33,27 @@ const parseId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : NaN;
 };
 
+const isNurse = (req) => req.user?.role === 'nurse';
+
+const getNursePatientIds = async (nurseId) => {
+  const patients = await Patient.findAll({
+    where: { nurse_id: nurseId },
+    attributes: ['id'],
+  });
+
+  return patients.map((patient) => patient.id);
+};
+
+const getNurseScopedTask = async (req, id) => {
+  const where = { id };
+
+  if (isNurse(req)) {
+    where.assigned_by = req.user.id;
+  }
+
+  return Task.findOne({ where });
+};
+
 const taskResponse = (task) => ({
   id: task.id,
   title: task.title,
@@ -142,11 +163,15 @@ const validateTaskPayload = (payload, { partial = false } = {}) => {
   return null;
 };
 
-const ensureReferencesExist = async (payload) => {
+const ensureReferencesExist = async (payload, req) => {
   if (payload.patient_id) {
     const patient = await Patient.findByPk(payload.patient_id);
 
     if (!patient) {
+      return 'Patient not found';
+    }
+
+    if (isNurse(req) && Number(patient.nurse_id) !== Number(req.user.id)) {
       return 'Patient not found';
     }
   }
@@ -184,13 +209,18 @@ const ensureReferencesExist = async (payload) => {
 const createTask = async (req, res) => {
   try {
     const payload = buildTaskPayload(req.body);
+    if (isNurse(req)) {
+      payload.assigned_by = req.user.id;
+      payload.assigned_to = payload.assigned_to || req.user.id;
+    }
+
     const validationError = validateTaskPayload(payload);
 
     if (validationError) {
       return res.status(400).json({ message: validationError });
     }
 
-    const referenceError = await ensureReferencesExist(payload);
+    const referenceError = await ensureReferencesExist(payload, req);
 
     if (referenceError) {
       return res.status(404).json({ message: referenceError });
@@ -226,7 +256,7 @@ const getTasks = async (req, res) => {
     const { id } = req.params;
 
     if (id) {
-      const task = await Task.findByPk(id);
+      const task = await getNurseScopedTask(req, id);
 
       if (!task) {
         return res.status(404).json({ message: 'Task not found' });
@@ -263,6 +293,20 @@ const getTasks = async (req, res) => {
       where.patient_id = patient_id;
     }
 
+    if (isNurse(req)) {
+      where.assigned_by = req.user.id;
+
+      if (where.patient_id) {
+        const patient = await Patient.findOne({
+          where: { id: where.patient_id, nurse_id: req.user.id },
+        });
+
+        if (!patient) {
+          return res.status(200).json({ tasks: [] });
+        }
+      }
+    }
+
     if (req.query.search) {
       where.title = { [Op.like]: `%${req.query.search}%` };
     }
@@ -296,20 +340,24 @@ const getTasks = async (req, res) => {
 const updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const task = await Task.findByPk(id);
+    const task = await getNurseScopedTask(req, id);
 
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
 
     const payload = buildTaskPayload(req.body, { partial: true });
+    if (isNurse(req)) {
+      delete payload.assigned_by;
+    }
+
     const validationError = validateTaskPayload(payload, { partial: true });
 
     if (validationError) {
       return res.status(400).json({ message: validationError });
     }
 
-    const referenceError = await ensureReferencesExist(payload);
+    const referenceError = await ensureReferencesExist(payload, req);
 
     if (referenceError) {
       return res.status(404).json({ message: referenceError });
@@ -340,7 +388,7 @@ const updateTask = async (req, res) => {
 const completeTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const task = await Task.findByPk(id);
+    const task = await getNurseScopedTask(req, id);
 
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
@@ -382,7 +430,7 @@ const reassignTask = async (req, res) => {
       return res.status(400).json({ message: 'assigned_to is required' });
     }
 
-    const task = await Task.findByPk(id);
+    const task = await getNurseScopedTask(req, id);
 
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
@@ -422,7 +470,7 @@ const reassignTask = async (req, res) => {
 const deleteTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const task = await Task.findByPk(id);
+    const task = await getNurseScopedTask(req, id);
 
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });

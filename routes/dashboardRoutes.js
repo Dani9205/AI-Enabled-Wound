@@ -6,8 +6,11 @@ const {
   getRecentUpdates,
   getTodayTasks,
 } = require('../controllers/dashboardController');
+const { authenticateToken, requireRoles } = require('../middleware/authMiddleware');
 
 const router = express.Router();
+
+router.use(authenticateToken, requireRoles('nurse'));
 
 router.get('/home', getHomeDashboard);
 router.get('/stats', getDashboardStats);
