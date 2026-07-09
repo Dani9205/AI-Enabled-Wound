@@ -23,6 +23,7 @@ const {
   updateWoundCase,
 } = require('../controllers/woundCaseController');
 const { authenticateToken, requireRoles } = require('../middleware/authMiddleware');
+const uploadWoundImages = require('../middleware/woundImageUpload');
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ router.get('/preview-report/:id/:reportId', getReportPreview);
 router.get('/download-report/:id/:reportId', downloadReport);
 router.put('/update-wound-case/:id', updateWoundCase);
 router.patch('/add-wound-update/:id', addWoundUpdate);
-router.patch('/add-wound-image/:id', addWoundImage);
+router.patch('/add-wound-image/:id', uploadWoundImages, addWoundImage);
 router.delete('/delete-wound-image/:id/:imageId', deleteWoundImage);
 router.patch('/add-measurement/:id', addMeasurement);
 router.patch('/add-note/:id', addClinicalNote);

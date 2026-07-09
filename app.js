@@ -1,5 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const path = require('path');
 require('dotenv').config(); // Load environment variables
 const sequelize = require('./config/db'); // Initialize DB connection
 require('./models/userModel');
@@ -34,6 +35,7 @@ const doctorWoundDetailsRoutes = require('./routes/doctorWoundDetailsRoutes');
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const PORT = process.env.PORT || 3000;
 

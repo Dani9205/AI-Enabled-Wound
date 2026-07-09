@@ -94,10 +94,47 @@ const currentTimestamp = () => new Date().toISOString();
 const makeId = (prefix) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+const getRequestBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
+
+const getUploadedWoundImageFiles = (req) => {
+  if (req.file) {
+    return [req.file];
+  }
+
+  if (!req.files) {
+    return [];
+  }
+
+  if (Array.isArray(req.files)) {
+    return req.files;
+  }
+
+  return Object.values(req.files).flat();
+};
+
+const getIndexedBodyValue = (value, index) => {
+  if (Array.isArray(value)) {
+    return value[index] !== undefined ? value[index] : value[0];
+  }
+
+  return value;
+};
+
+const uploadedFileToImage = (req, file, index) => ({
+  url: `${getRequestBaseUrl(req)}/uploads/wound-images/${file.filename}`,
+  caption: getIndexedBodyValue(req.body.caption || req.body.captions, index),
+  original_name: file.originalname,
+  mime_type: file.mimetype,
+  size: file.size,
+});
+
 const formatImage = (image) => ({
   id: image.id || makeId('img'),
   url: cleanString(image.url || image.image_url || image.imageUrl),
   caption: cleanString(image.caption) || null,
+  original_name: cleanString(image.original_name || image.originalName) || null,
+  mime_type: cleanString(image.mime_type || image.mimeType) || null,
+  size: parseNumber(image.size),
   uploaded_at: image.uploaded_at || image.uploadedAt || currentTimestamp(),
 });
 
@@ -502,17 +539,25 @@ const addWoundImage = async (req, res) => {
       return res.status(404).json({ message: 'Wound case not found' });
     }
 
+    const uploadedImages = getUploadedWoundImageFiles(req).map((file, index) =>
+      uploadedFileToImage(req, file, index)
+    );
     const images = asArray(req.body.images);
     const singleImage = {
       url: req.body.url || req.body.image_url || req.body.imageUrl,
       caption: req.body.caption,
     };
-    const newImages = (images.length ? images : [singleImage])
+    const imageSources = uploadedImages.length
+      ? uploadedImages
+      : images.length
+        ? images
+        : [singleImage];
+    const newImages = imageSources
       .map(formatImage)
       .filter((image) => image.url);
 
     if (!newImages.length) {
-      return res.status(400).json({ message: 'image url is required' });
+      return res.status(400).json({ message: 'image file or image url is required' });
     }
 
     await woundCase.update({
