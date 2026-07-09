@@ -17,6 +17,49 @@ const isTruthy = (value) =>
   ['true', '1'].includes(String(value).trim().toLowerCase());
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+const getRequestBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
+
+const getUploadedProfilePhoto = (req) => {
+  if (req.file) {
+    return req.file;
+  }
+
+  if (!req.files) {
+    return null;
+  }
+
+  if (Array.isArray(req.files)) {
+    return req.files[0] || null;
+  }
+
+  return Object.values(req.files).flat()[0] || null;
+};
+
+const getProfilePhotoUrl = (req) => {
+  const uploadedFile = getUploadedProfilePhoto(req);
+
+  if (uploadedFile) {
+    return `${getRequestBaseUrl(req)}/uploads/profile-photos/${uploadedFile.filename}`;
+  }
+
+  return String(
+    req.body.profile_photo_url || req.body.profilePhotoUrl || ''
+  ).trim() || null;
+};
+
+const uploadedProfilePhotoResponse = (req, file) => {
+  const url = `${getRequestBaseUrl(req)}/uploads/profile-photos/${file.filename}`;
+
+  return {
+    url,
+    path: `/uploads/profile-photos/${file.filename}`,
+    filename: file.filename,
+    original_name: file.originalname,
+    mime_type: file.mimetype,
+    size: file.size,
+  };
+};
+
 const publicUser = (user) => ({
   id: user.id,
   name: user.name,
@@ -24,6 +67,7 @@ const publicUser = (user) => ({
   last_name: user.last_name,
   email: user.email,
   phone_number: user.phone_number,
+  profile_photo_url: user.profile_photo_url,
   role: user.role,
   is_email_verified: user.is_email_verified,
 });
@@ -69,6 +113,41 @@ const ensureValidCode = (user, code, purpose) => {
   return null;
 };
 
+const uploadAuthImage = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        message: 'Authentication is required',
+      });
+    }
+
+    const uploadedFile = getUploadedProfilePhoto(req);
+
+    if (!uploadedFile) {
+      return res.status(400).json({
+        message: 'Image file is required',
+      });
+    }
+
+    const image = uploadedProfilePhotoResponse(req, uploadedFile);
+
+    await req.user.update({
+      profile_photo_url: image.url,
+    });
+
+    return res.status(200).json({
+      message: 'Profile image updated successfully',
+      image,
+      user: publicUser(req.user),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Profile image update failed',
+      error: error.message,
+    });
+  }
+};
+
 
 
 
@@ -91,6 +170,7 @@ const createAccount = async (req, res) => {
     const password = req.body.password;
     const confirm_password = req.body.confirm_password || req.body.confirmPassword;
     const terms_accepted = req.body.terms_accepted || req.body.termsAccepted;
+    const profile_photo_url = getProfilePhotoUrl(req);
 
     if (
       !first_name ||
@@ -151,6 +231,7 @@ const createAccount = async (req, res) => {
       last_name,
       email,
       phone_number,
+      profile_photo_url,
       role,
       password_hash: hashPassword(password),
       terms_accepted: true,
@@ -209,6 +290,7 @@ const createOrganizationAccount = async (req, res) => {
     const password = req.body.password;
     const confirm_password = req.body.confirm_password || req.body.confirmPassword;
     const terms_accepted = req.body.terms_accepted || req.body.termsAccepted;
+    const profile_photo_url = getProfilePhotoUrl(req);
 
     if (
       !first_name ||
@@ -271,6 +353,7 @@ const createOrganizationAccount = async (req, res) => {
       last_name,
       email,
       phone_number,
+      profile_photo_url,
       organization_hospital,
       organization_code,
       role,
@@ -698,6 +781,7 @@ module.exports = {
   forgotPassword,
   resetPassword,
   signin,
+  uploadAuthImage,
   verifySigninCode,
   changeRole,
 };
