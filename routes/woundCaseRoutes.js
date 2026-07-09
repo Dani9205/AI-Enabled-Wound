@@ -23,6 +23,7 @@ const {
   updateWoundCase,
 } = require('../controllers/woundCaseController');
 const { authenticateToken, requireRoles } = require('../middleware/authMiddleware');
+const uploadVoiceDictation = require('../middleware/voiceDictationUpload');
 const uploadWoundImages = require('../middleware/woundImageUpload');
 
 const router = express.Router();
@@ -45,7 +46,7 @@ router.patch('/add-wound-image/:id', uploadWoundImages, addWoundImage);
 router.delete('/delete-wound-image/:id/:imageId', deleteWoundImage);
 router.patch('/add-measurement/:id', addMeasurement);
 router.patch('/add-note/:id', addClinicalNote);
-router.post('/save-voice-dictation/:id', saveVoiceDictation);
+router.post('/save-voice-dictation/:id', uploadVoiceDictation, saveVoiceDictation);
 router.post('/generate-soap-note/:id', generateSoapNote);
 router.post('/generate-report/:id', generateReport);
 router.patch('/add-report/:id', addReport);

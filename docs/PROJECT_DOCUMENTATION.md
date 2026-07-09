@@ -1,6 +1,6 @@
 # AI-Enabled Wound APIs - Project Documentation
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 ## 1. Project Overview
 
@@ -24,6 +24,8 @@ Main responsibilities:
 | Database | MySQL |
 | ORM | Sequelize |
 | Mail | Nodemailer |
+| File uploads | Multer |
+| PDF generation | PDFKit |
 | Env loading | dotenv |
 | Dev server | nodemon |
 | Auth/security helpers | Node crypto, custom JWT-style HMAC token helpers |
@@ -41,12 +43,19 @@ Main responsibilities:
 |   |-- API_REFERENCE.md
 |   `-- PROJECT_DOCUMENTATION.md
 |-- middleware/
-|   `-- authMiddleware.js
+|   |-- authMiddleware.js
+|   |-- profilePhotoUpload.js
+|   `-- woundImageUpload.js
 |-- migrations/
 |-- models/
 |-- postman/
 |-- routes/
 |-- scripts/
+|-- uploads/
+|   |-- profile-photos/
+|   |-- reports/
+|   |-- voice-dictations/
+|   `-- wound-images/
 `-- utils/
 ```
 
@@ -59,8 +68,9 @@ Important folders:
 | `controllers/` | Business logic for each API module. |
 | `routes/` | Express route definitions and URL mapping. |
 | `models/` | Sequelize models for database tables. |
-| `middleware/` | Authentication and role middleware. |
+| `middleware/` | Authentication, role, and multipart image upload middleware. |
 | `utils/` | Shared helpers for security and mail. |
+| `uploads/` | Runtime upload destination. Ignored by git; served publicly from `/uploads`. |
 | `migrations/` | SQL migration/support scripts. |
 | `scripts/` | Utility scripts for admin/user/data maintenance and smoke testing. |
 | `postman/` | Postman collections and environments for API testing. |
@@ -76,6 +86,7 @@ Server behavior:
 - Initializes Sequelize from `config/db.js`.
 - Registers all Sequelize models.
 - Enables JSON and URL-encoded request parsing.
+- Serves uploaded files from `/uploads`.
 - Mounts API route groups under `/api/...`.
 - Runs `sequelize.sync(syncOptions)` before listening.
 - Uses `DB_SYNC_ALTER=true` to run Sequelize sync with `{ alter: true }`.
@@ -103,7 +114,16 @@ APP_STORE_ORGANIZATION_PRODUCT_ID=com.yourcompany.yourapp.subscription.organizat
 APPLE_STOREKIT_VERIFY_SIGNATURE=true
 ```
 
-Mail-related variables may also be required by `utils/mailer.js`, depending on the configured mail transport.
+Mail-related variables used by `utils/mailer.js`:
+
+```env
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_SECURE=false
+MAIL_USER=your_smtp_user
+MAIL_PASS=your_smtp_password
+MAIL_FROM=no-reply@example.com
+```
 
 ## 6. Install and Run
 
@@ -125,13 +145,13 @@ Start development server:
 npm run dev
 ```
 
-The server starts at:
+The local server starts at:
 
 ```txt
-https://aiwond.appistansoft.com
+http://localhost:3000
 ```
 
-or the value of `PORT`.
+or the configured `PORT`. The production/reference URL used in the docs is `https://aiwond.appistansoft.com`.
 
 ## 7. Available Scripts
 
@@ -162,7 +182,8 @@ Password handling:
 Code/OTP handling:
 
 - Six digit codes are generated through `crypto.randomInt`.
-- Codes are SHA-256 hashed before storage/comparison.
+- Common auth currently stores plain six digit codes on the user row for signup/reset verification.
+- `utils/security.js` also contains SHA-256 code hash helpers that can be used if code storage is hardened later.
 
 Token handling:
 
@@ -180,8 +201,10 @@ Middleware:
 
 Current protection status:
 
+- Nurse patient, task, wound case, and dashboard routes use `authenticateToken` and require `nurse`.
 - Patient app/profile/notification routes use `authenticateToken` and require `patient`.
-- Some legacy nurse/common routes are not route-level protected yet.
+- `/api/auth/upload-image` uses `authenticateToken`; it updates only the logged-in user's `profile_photo_url`.
+- Some legacy/common profile, notification, handoff, doctor, and admin-adjacent routes still rely on URL/body identifiers or controller checks instead of consistent route-level RBAC.
 - Route-level RBAC should be reviewed before production use.
 
 ## 9. API Base URL
@@ -205,6 +228,8 @@ Content-Type: application/json
 Accept: application/json
 Authorization: Bearer <token>
 ```
+
+For file upload endpoints, use `multipart/form-data` instead of `application/json`.
 
 Common error response:
 
@@ -251,6 +276,7 @@ Routes are mounted in `app.js`.
 | --- | --- | --- |
 | `POST` | `/create-account` | Create user account. |
 | `POST` | `/create-organization-account` | Create organization account request. |
+| `POST` | `/upload-image` | Authenticated profile image upload; updates current user's `profile_photo_url`. |
 | `PUT` | `/accept-organization-request` | Accept an organization account request. |
 | `POST` | `/signin` | Sign in user. |
 | `POST` | `/verify-code` | Verify signup/signin code. |
@@ -291,19 +317,19 @@ Routes are mounted in `app.js`.
 | `PATCH` | `/add-wound-update/:id` | Add wound update. |
 | `GET` | `/get-timeline/:id` | Get wound timeline. |
 | `GET` | `/get-images/:id` | Get wound images. |
-| `PATCH` | `/add-wound-image/:id` | Add wound image metadata. |
+| `PATCH` | `/add-wound-image/:id` | Upload/add wound image file or URL. |
 | `DELETE` | `/delete-wound-image/:id/:imageId` | Delete image metadata. |
 | `GET` | `/get-measurements/:id` | Get measurements. |
 | `PATCH` | `/add-measurement/:id` | Add measurement. |
 | `GET` | `/get-notes/:id` | Get clinical notes. |
 | `PATCH` | `/add-note/:id` | Add clinical note. |
-| `POST` | `/save-voice-dictation/:id` | Save voice dictation metadata/text. |
+| `POST` | `/save-voice-dictation/:id` | Save voice dictation transcript and/or uploaded audio file. |
 | `POST` | `/generate-soap-note/:id` | Generate SOAP note placeholder. |
 | `GET` | `/get-reports/:id` | Get reports. |
 | `POST` | `/generate-report/:id` | Generate report metadata. |
 | `PATCH` | `/add-report/:id` | Add report metadata. |
 | `GET` | `/preview-report/:id/:reportId` | Preview report data. |
-| `GET` | `/download-report/:id/:reportId` | Return report download URL/data. |
+| `GET` | `/download-report/:id/:reportId` | Generate/save report PDF and return download URL. |
 | `PATCH` | `/share-report/:id/:reportId` | Share report. |
 | `DELETE` | `/delete-wound-case/:id` | Delete wound case. |
 
@@ -682,7 +708,57 @@ If no matching `patients` row is found, patient app endpoints return:
 }
 ```
 
-## 15. Postman
+## 15. File Uploads
+
+The project supports local disk image uploads through Multer. Uploaded files are written under `uploads/` and are served publicly by Express at `/uploads`.
+
+Runtime upload folders:
+
+| Folder | Used By | Public URL Prefix |
+| --- | --- | --- |
+| `uploads/profile-photos/` | Auth profile image upload and account creation profile photos. | `/uploads/profile-photos/...` |
+| `uploads/reports/` | Generated wound report PDFs. | `/uploads/reports/...` |
+| `uploads/voice-dictations/` | Wound clinical note voice dictation audio files. | `/uploads/voice-dictations/...` |
+| `uploads/wound-images/` | Wound case image upload. | `/uploads/wound-images/...` |
+
+Profile photo uploads:
+
+| Endpoint | Auth | Form-data File Keys | Max Size | Behavior |
+| --- | --- | --- | --- | --- |
+| `POST /api/auth/upload-image` | Bearer token required | `image`, `file`, `photo`, `profile_photo`, `profilePhoto` | 5 MB | Saves image and updates only `req.user.profile_photo_url`. |
+| `POST /api/auth/create-account` | Public | Same keys | 5 MB | Optional image is saved and assigned to the newly created user's `profile_photo_url`. |
+| `POST /api/auth/create-organization-account` | Public | Same keys | 5 MB | Optional image is saved and assigned to the newly created organization request user's `profile_photo_url`. |
+
+Wound image uploads:
+
+| Endpoint | Auth | Form-data File Keys | Limits | Behavior |
+| --- | --- | --- | --- | --- |
+| `PATCH /api/wound-cases/add-wound-image/:id` | Bearer token required, `nurse` role | `image`, `images`, `file`, `files`, `wound_image`, `wound_images` | 10 MB per file, up to 10 files | Saves image files and appends their public URLs/metadata to the wound case `images` JSON array. |
+
+Voice dictation uploads:
+
+| Endpoint | Auth | Form-data File Keys | Max Size | Behavior |
+| --- | --- | --- | --- | --- |
+| `POST /api/wound-cases/save-voice-dictation/:id` | Bearer token required, `nurse` role | `audio`, `voice`, `file`, `voice_file`, `voiceFile`, `audio_file`, `audioFile` | 25 MB | Saves an audio file and/or transcript as a `voice` clinical note. |
+
+Report PDF generation:
+
+| Endpoint | Auth | Behavior |
+| --- | --- | --- |
+| `GET /api/wound-cases/download-report/:id/:reportId` | Bearer token required, `nurse` role | Builds a PDF from wound case/report data, saves it under `uploads/reports/`, updates the report metadata with `url`, `file_url`, `file_path`, `file_size`, and returns `download_url`. |
+
+All upload middleware rejects non-image MIME types. Upload URLs use the current request host, for example:
+
+```txt
+http://localhost:3000/uploads/profile-photos/filename.jpg
+http://localhost:3000/uploads/reports/filename.pdf
+http://localhost:3000/uploads/voice-dictations/filename.m4a
+http://localhost:3000/uploads/wound-images/filename.jpg
+```
+
+The `uploads/` directory is ignored by git. Production deployments should replace local disk uploads with durable object storage if files need to survive server replacement.
+
+## 16. Postman
 
 Postman files are stored in `postman/`.
 
@@ -694,7 +770,7 @@ Postman files are stored in `postman/`.
 | `AI-Enabled-Wound-Doctor-APIs.postman_environment.json` | Doctor API environment. |
 | `README.md` | Postman usage notes. |
 
-## 16. Migrations
+## 17. Migrations
 
 Migration/support SQL files:
 
@@ -705,7 +781,7 @@ Migration/support SQL files:
 
 The app also uses `sequelize.sync()`. In production, prefer explicit migrations over automatic schema alteration.
 
-## 17. Detailed API Reference
+## 18. Detailed API Reference
 
 For full request and response examples, see:
 
@@ -715,24 +791,25 @@ docs/API_REFERENCE.md
 
 This project documentation is a high-level single-file guide. The API reference contains longer example payloads and response bodies.
 
-## 18. Known Limitations and Production Notes
+## 19. Known Limitations and Production Notes
 
-- Some legacy/common routes are not protected by authentication middleware.
-- Full role-based access control is not consistently enforced across all route groups.
+- Some legacy/common routes are still not protected by authentication middleware.
+- Full role-based access control is not consistently enforced across every route group.
 - SOAP note generation is placeholder/rule-based logic, not a real AI service integration yet.
-- Report APIs store and return metadata/URLs; they do not generate binary PDFs directly.
-- Image, audio, and report upload storage is not implemented; APIs store URLs/metadata.
+- Wound report PDFs are generated locally; doctor/patient report endpoints still mostly return metadata/URLs and should be aligned if binary PDF behavior is required there too.
+- Profile photo, wound image, voice dictation, and wound report PDF storage use local disk.
+- Local uploaded files are not backed by cloud/object storage and may be lost if the runtime filesystem is replaced.
 - Automatic notification creation is not wired for every business event.
 - `npm test` is a placeholder and there is no automated test suite yet.
 - `sequelize.sync({ alter: true })` can change schema at runtime; use carefully outside local development.
 - The custom token implementation is JWT-like but not using a standard JWT library.
 
-## 19. Recommended Next Improvements
+## 20. Recommended Next Improvements
 
 - Apply `authenticateToken` and `requireRoles` consistently to all protected routes.
 - Add integration tests for auth, patient app, wound cases, reports, notifications, and subscriptions.
 - Replace placeholder SOAP/report generation with the final AI/PDF services.
-- Add upload/storage support for wound images, audio dictation, and generated reports.
+- Move image/audio/report uploads to durable storage.
 - Add migration-based deployment workflow.
 - Add API versioning, for example `/api/v1/...`.
 - Add request validation middleware for payloads and query params.

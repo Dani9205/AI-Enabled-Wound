@@ -1,8 +1,14 @@
+const fs = require('fs');
+const path = require('path');
+const PDFDocument = require('pdfkit');
 const { Op } = require('sequelize');
 const Patient = require('../models/patientModel');
 const WoundCase = require('../models/woundCaseModel');
 
 const VALID_STATUSES = ['active', 'monitoring', 'healing', 'healed', 'closed'];
+const reportUploadDir = path.join(__dirname, '..', 'uploads', 'reports');
+
+fs.mkdirSync(reportUploadDir, { recursive: true });
 
 const cleanString = (value) => {
   if (value === undefined || value === null) {
@@ -163,6 +169,12 @@ const formatClinicalNote = (note) => ({
   text: cleanString(note.text || note.note || note.clinical_note || note.clinicalNote),
   soap: note.soap || note.soap_note || note.soapNote || null,
   audio_url: cleanString(note.audio_url || note.audioUrl) || null,
+  audio_file_path: cleanString(note.audio_file_path || note.audioFilePath) || null,
+  audio_original_name: cleanString(note.audio_original_name || note.audioOriginalName) || null,
+  audio_mime_type: cleanString(note.audio_mime_type || note.audioMimeType) || null,
+  audio_size: parseNumber(
+    note.audio_size !== undefined ? note.audio_size : note.audioSize
+  ),
   duration_seconds: parseNumber(
     note.duration_seconds !== undefined ? note.duration_seconds : note.durationSeconds
   ),
@@ -900,6 +912,148 @@ const buildReportData = (woundCase) => {
   };
 };
 
+const formatPdfValue = (value, fallback = 'N/A') => {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : fallback;
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+};
+
+const addPdfSectionTitle = (doc, title) => {
+  doc.moveDown(0.8);
+  doc.fontSize(14).font('Helvetica-Bold').text(title);
+  doc.moveDown(0.3);
+  doc.fontSize(10).font('Helvetica');
+};
+
+const addPdfKeyValue = (doc, label, value) => {
+  doc
+    .font('Helvetica-Bold')
+    .text(`${label}: `, { continued: true })
+    .font('Helvetica')
+    .text(formatPdfValue(value));
+};
+
+const writeReportPdf = ({ filePath, woundCase, report, reportData }) =>
+  new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const stream = fs.createWriteStream(filePath);
+    const measurements = asArray(reportData.measurements);
+    const images = asArray(reportData.images);
+    const latestMeasurement = measurements.slice(-1)[0] || null;
+    const latestNote = reportData.latest_note || null;
+
+    stream.on('finish', resolve);
+    stream.on('error', reject);
+    doc.on('error', reject);
+    doc.pipe(stream);
+
+    doc.fontSize(20).font('Helvetica-Bold').text(report.title || 'Wound Report');
+    doc.moveDown(0.2);
+    doc.fontSize(10).font('Helvetica').text(`Generated at: ${formatPdfValue(report.generated_at || reportData.generated_at)}`);
+    doc.text(`Report ID: ${formatPdfValue(report.id)}`);
+
+    if (report.summary) {
+      doc.moveDown();
+      doc.fontSize(11).text(report.summary, { align: 'left' });
+    }
+
+    addPdfSectionTitle(doc, 'Wound Summary');
+    addPdfKeyValue(doc, 'Wound Case ID', woundCase.id);
+    addPdfKeyValue(doc, 'Patient ID', woundCase.patient_id);
+    addPdfKeyValue(doc, 'Wound Type', reportData.wound_type);
+    addPdfKeyValue(doc, 'Body Location', reportData.body_location);
+    addPdfKeyValue(doc, 'Severity Stage', reportData.severity_stage);
+    addPdfKeyValue(doc, 'Status', woundCase.status);
+    addPdfKeyValue(doc, 'Duration Days', reportData.duration_days);
+    addPdfKeyValue(doc, 'Healing Progress', reportData.healing_progress !== null ? `${reportData.healing_progress}%` : null);
+    addPdfKeyValue(doc, 'Pain Score', reportData.pain_score);
+
+    addPdfSectionTitle(doc, 'Current Measurements');
+    addPdfKeyValue(doc, 'Length (cm)', reportData.length_cm);
+    addPdfKeyValue(doc, 'Width (cm)', reportData.width_cm);
+    addPdfKeyValue(doc, 'Depth (cm)', reportData.depth_cm);
+
+    if (latestMeasurement) {
+      addPdfSectionTitle(doc, 'Latest Measurement Entry');
+      addPdfKeyValue(doc, 'Measured At', latestMeasurement.measured_at);
+      addPdfKeyValue(doc, 'Length (cm)', latestMeasurement.length_cm);
+      addPdfKeyValue(doc, 'Width (cm)', latestMeasurement.width_cm);
+      addPdfKeyValue(doc, 'Depth (cm)', latestMeasurement.depth_cm);
+      addPdfKeyValue(doc, 'Pain Score', latestMeasurement.pain_score);
+      addPdfKeyValue(doc, 'Notes', latestMeasurement.notes);
+    }
+
+    if (latestNote) {
+      addPdfSectionTitle(doc, 'Latest Clinical Note');
+      addPdfKeyValue(doc, 'Type', latestNote.note_type);
+      addPdfKeyValue(doc, 'Title', latestNote.title);
+      addPdfKeyValue(doc, 'Created At', latestNote.created_at);
+      addPdfKeyValue(doc, 'Text', latestNote.text);
+
+      if (latestNote.soap) {
+        addPdfKeyValue(doc, 'SOAP', latestNote.soap);
+      }
+    }
+
+    addPdfSectionTitle(doc, 'Images');
+    if (images.length) {
+      images.forEach((image, index) => {
+        doc.text(`${index + 1}. ${formatPdfValue(image.caption, 'Wound image')} - ${formatPdfValue(image.url)}`);
+      });
+    } else {
+      doc.text('No wound images recorded.');
+    }
+
+    addPdfSectionTitle(doc, 'Report Metadata');
+    addPdfKeyValue(doc, 'Report Type', report.report_type);
+    addPdfKeyValue(doc, 'Generated By', report.generated_by);
+    addPdfKeyValue(doc, 'Updates Count', reportData.updates_count);
+    addPdfKeyValue(doc, 'Images Count', images.length);
+    addPdfKeyValue(doc, 'Measurements Count', measurements.length);
+
+    doc.end();
+  });
+
+const getReportFileName = (woundCase, report) =>
+  `wound-report-${woundCase.id}-${String(report.id || makeId('report')).replace(/[^a-z0-9_-]/gi, '-')}.pdf`;
+
+const getReportPublicUrl = (req, fileName) =>
+  `${getRequestBaseUrl(req)}/uploads/reports/${fileName}`;
+
+const getUploadedVoiceDictationFile = (req) => {
+  if (req.file) {
+    return req.file;
+  }
+
+  if (!req.files) {
+    return null;
+  }
+
+  if (Array.isArray(req.files)) {
+    return req.files[0] || null;
+  }
+
+  return Object.values(req.files).flat()[0] || null;
+};
+
+const uploadedVoiceFileToNoteData = (req, file) => ({
+  audio_url: `${getRequestBaseUrl(req)}/uploads/voice-dictations/${file.filename}`,
+  audio_file_path: `/uploads/voice-dictations/${file.filename}`,
+  audio_original_name: file.originalname,
+  audio_mime_type: file.mimetype,
+  audio_size: file.size,
+});
+
 const generateReport = async (req, res) => {
   try {
     const woundCase = await getScopedWoundCase(req, req.params.id);
@@ -1027,17 +1181,51 @@ const downloadReport = async (req, res) => {
       return res.status(404).json({ message: 'Wound case not found' });
     }
 
-    const report = findReport(woundCase, req.params.reportId);
+    const reports = asArray(woundCase.reports);
+    const reportIndex = reports.findIndex(
+      (report) => String(report.id) === String(req.params.reportId)
+    );
 
-    if (!report) {
+    if (reportIndex === -1) {
       return res.status(404).json({ message: 'Report not found' });
     }
 
+    const report = reports[reportIndex];
+    const reportData = report.report_data || buildReportData(woundCase);
+    const fileName = getReportFileName(woundCase, report);
+    const filePath = path.join(reportUploadDir, fileName);
+    const downloadUrl = getReportPublicUrl(req, fileName);
+
+    if (!fs.existsSync(filePath)) {
+      await writeReportPdf({ filePath, woundCase, report, reportData });
+    }
+
+    const stats = fs.statSync(filePath);
+    const updatedReport = {
+      ...report,
+      url: downloadUrl,
+      file_url: downloadUrl,
+      file_path: `/uploads/reports/${fileName}`,
+      file_size: `${stats.size} bytes`,
+      mime_type: 'application/pdf',
+      pages: report.pages || 1,
+      report_data: reportData,
+      generated_at: report.generated_at || currentTimestamp(),
+    };
+
+    reports[reportIndex] = updatedReport;
+
+    await woundCase.update({
+      reports,
+      last_updated_at: new Date(),
+    });
+
     return res.status(200).json({
-      message: report.url ? 'Report download URL ready' : 'Report data ready for PDF generation',
-      download_url: report.url,
-      report,
-      preview: report.report_data || buildReportData(woundCase),
+      message: 'Report PDF ready for download',
+      download_url: downloadUrl,
+      file_path: updatedReport.file_path,
+      report: updatedReport,
+      preview: reportData,
     });
   } catch (error) {
     return res.status(500).json({
@@ -1055,18 +1243,26 @@ const saveVoiceDictation = async (req, res) => {
       return res.status(404).json({ message: 'Wound case not found' });
     }
 
+    const uploadedVoiceFile = getUploadedVoiceDictationFile(req);
+    const uploadedVoiceData = uploadedVoiceFile
+      ? uploadedVoiceFileToNoteData(req, uploadedVoiceFile)
+      : {};
     const transcript = cleanString(req.body.transcript || req.body.text);
     const note = formatClinicalNote({
       note_type: 'voice',
       title: req.body.title || 'Voice Note',
       text: transcript,
-      audio_url: req.body.audio_url || req.body.audioUrl,
+      audio_url: uploadedVoiceData.audio_url || req.body.audio_url || req.body.audioUrl,
+      audio_file_path: uploadedVoiceData.audio_file_path,
+      audio_original_name: uploadedVoiceData.audio_original_name,
+      audio_mime_type: uploadedVoiceData.audio_mime_type,
+      audio_size: uploadedVoiceData.audio_size,
       duration_seconds: req.body.duration_seconds || req.body.durationSeconds,
       created_by: req.body.created_by || req.body.createdBy,
     });
 
     if (!note.text && !note.audio_url) {
-      return res.status(400).json({ message: 'transcript or audio_url is required' });
+      return res.status(400).json({ message: 'transcript or audio file is required' });
     }
 
     await woundCase.update({
