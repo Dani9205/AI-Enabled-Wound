@@ -4,6 +4,7 @@ const {
   createAccount,
   createOrganizationAccount,
   forgotPassword,
+  getAuthenticatedUser,
   resetPassword,
   signin,
   uploadAuthImage,
@@ -15,6 +16,7 @@ const uploadProfilePhoto = require('../middleware/profilePhotoUpload');
 
 const router = express.Router();
 
+router.get('/me', authenticateToken, getAuthenticatedUser);
 router.post('/create-account', uploadProfilePhoto, createAccount);
 router.post('/create-organization-account', uploadProfilePhoto, createOrganizationAccount);
 router.post('/upload-image', authenticateToken, uploadProfilePhoto, uploadAuthImage);

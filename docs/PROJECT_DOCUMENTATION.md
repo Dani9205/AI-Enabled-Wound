@@ -1,6 +1,6 @@
 # AI-Enabled Wound APIs - Project Documentation
 
-Last updated: 2026-07-09
+Last updated: 2026-07-10
 
 ## 1. Project Overview
 
@@ -43,6 +43,7 @@ Main responsibilities:
 |-- controllers/
 |-- docs/
 |   |-- API_REFERENCE.md
+|   |-- AUTH_ME_API.md
 |   `-- PROJECT_DOCUMENTATION.md
 |-- middleware/
 |   |-- authMiddleware.js
@@ -154,7 +155,7 @@ npm run dev
 The local server starts at:
 
 ```txt
-https://aiwond.appistansoft.com
+http://localhost:3000
 ```
 
 or the configured `PORT`. The production/reference URL used in the docs is `https://aiwond.appistansoft.com`.
@@ -209,6 +210,7 @@ Current protection status:
 
 - Nurse patient, task, wound case, and dashboard routes use `authenticateToken` and require `nurse`.
 - Patient app/profile/notification routes use `authenticateToken` and require `patient`.
+- `/api/auth/me` uses `authenticateToken`; it returns the current logged-in user from the bearer token.
 - `/api/auth/upload-image` uses `authenticateToken`; it updates only the logged-in user's `profile_photo_url`.
 - Some legacy/common profile, notification, handoff, doctor, and admin-adjacent routes still rely on URL/body identifiers or controller checks instead of consistent route-level RBAC.
 - Route-level RBAC should be reviewed before production use.
@@ -280,6 +282,7 @@ Routes are mounted in `app.js`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `GET` | `/me` | Fetch current authenticated user from bearer token. |
 | `POST` | `/create-account` | Create user account. |
 | `POST` | `/create-organization-account` | Create organization account request. |
 | `POST` | `/upload-image` | Authenticated profile image upload; updates current user's `profile_photo_url`. |

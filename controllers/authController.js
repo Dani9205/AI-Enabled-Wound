@@ -151,6 +151,26 @@ const uploadAuthImage = async (req, res) => {
   }
 };
 
+const getAuthenticatedUser = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        message: 'Authentication is required',
+      });
+    }
+
+    return res.status(200).json({
+      message: 'User fetched successfully',
+      user: publicUser(req.user),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'User fetch failed',
+      error: error.message,
+    });
+  }
+};
+
 
 
 
@@ -782,6 +802,7 @@ module.exports = {
   createAccount,
   createOrganizationAccount,
   forgotPassword,
+  getAuthenticatedUser,
   resetPassword,
   signin,
   uploadAuthImage,
