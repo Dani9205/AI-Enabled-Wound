@@ -335,7 +335,7 @@ Routes are mounted in `app.js`.
 | `PATCH` | `/add-note/:id` | Add clinical note. |
 | `POST` | `/save-voice-dictation/:id` | Save voice dictation transcript and/or uploaded audio file. |
 | `POST` | `/transcribe-voice-dictation/:id/:noteId?` | Transcribe uploaded or saved voice dictation audio and save transcript. |
-| `POST` | `/generate-soap-note/:id` | Generate SOAP note placeholder. |
+| `POST` | `/generate-soap-note/:id` | Generate and save a structured AI SOAP note from the clinical narrative and wound case facts. |
 | `GET` | `/get-reports/:id` | Get reports. |
 | `POST` | `/generate-report/:id` | Generate report metadata; uses AI report service when configured. |
 | `POST` | `/generate-ai-report/:id` | Alias for AI-backed report generation. |
@@ -815,7 +815,7 @@ This project documentation is a high-level single-file guide. The API reference 
 
 - Some legacy/common routes are still not protected by authentication middleware.
 - Full role-based access control is not consistently enforced across every route group.
-- SOAP note generation is placeholder/rule-based logic, not a real AI service integration yet.
+- SOAP note generation depends on OpenAI availability and a valid `OPENAI_API_KEY`; generated clinical documentation should be reviewed by a qualified clinician.
 - Wound report PDFs are generated locally; doctor/patient report endpoints still mostly return metadata/URLs and should be aligned if binary PDF behavior is required there too.
 - Profile photo, wound image, voice dictation, and wound report PDF storage use local disk.
 - Local uploaded files are not backed by cloud/object storage and may be lost if the runtime filesystem is replaced.
@@ -828,7 +828,7 @@ This project documentation is a high-level single-file guide. The API reference 
 
 - Apply `authenticateToken` and `requireRoles` consistently to all protected routes.
 - Add integration tests for auth, patient app, wound cases, reports, notifications, and subscriptions.
-- Replace placeholder SOAP/report generation with the final AI/PDF services.
+- Add automated contract and failure-mode tests for SOAP/report AI generation.
 - Move image/audio/report uploads to durable storage.
 - Add migration-based deployment workflow.
 - Add API versioning, for example `/api/v1/...`.

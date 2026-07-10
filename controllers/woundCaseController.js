@@ -813,6 +813,129 @@ const getClinicalNotes = async (req, res) => {
   }
 };
 
+const parseSoapNoteResponse = (body) => {
+  const normalizedBody = cleanString(body)?.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+
+  if (!normalizedBody) {
+    throw new Error('OpenAI returned an empty SOAP note');
+  }
+
+  const parsed = JSON.parse(normalizedBody);
+  const soap = parsed.soap || parsed.soap_note || parsed.soapNote || parsed;
+  const normalizedSoap = {
+    subjective: cleanString(soap.subjective),
+    objective: cleanString(soap.objective),
+    assessment: cleanString(soap.assessment),
+    plan: cleanString(soap.plan),
+  };
+
+  if (Object.values(normalizedSoap).some((section) => !section)) {
+    throw new Error('OpenAI returned an incomplete SOAP note');
+  }
+
+  return normalizedSoap;
+};
+
+const callOpenAiSoapService = async ({ woundCase, text, instructions }) => {
+  const apiKey = cleanString(process.env.OPENAI_API_KEY);
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is required for SOAP note generation');
+  }
+
+  const openai = new OpenAI({ apiKey });
+  const modelCandidates = [
+    cleanString(process.env.OPENAI_SOAP_MODEL),
+    cleanString(process.env.OPENAI_REPORT_MODEL),
+    'gpt-4.1-mini',
+  ].filter((model, index, models) => model && models.indexOf(model) === index);
+  const modelErrors = [];
+  const input = [
+    {
+      role: 'system',
+      content:
+        'You are a clinical documentation assistant. Convert the supplied wound-care narrative and case facts into a concise professional SOAP note. Synthesize and reorganize the information instead of copying the narrative verbatim. Do not invent facts, diagnoses, examination findings, treatments, or patient statements. Clearly state when clinically relevant information is not documented. Return only JSON containing the string fields subjective, objective, assessment, and plan.',
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        clinical_narrative: text || null,
+        wound_case: {
+          wound_type: woundCase.wound_type,
+          severity_stage: woundCase.severity_stage,
+          body_location: woundCase.body_location,
+          wound_etiology: woundCase.wound_etiology,
+          status: woundCase.status,
+          pain_score: woundCase.pain_score,
+          healing_progress: woundCase.healing_progress,
+          length_cm: woundCase.length_cm,
+          width_cm: woundCase.width_cm,
+          depth_cm: woundCase.depth_cm,
+          existing_notes: woundCase.notes,
+          latest_measurement: asArray(woundCase.measurements).slice(-1)[0] || null,
+        },
+        additional_instructions: cleanString(instructions) || null,
+      }),
+    },
+  ];
+
+  for (const model of modelCandidates) {
+    try {
+      const response = await openai.responses.create({
+        model,
+        input,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'soap_note',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                subjective: { type: 'string' },
+                objective: { type: 'string' },
+                assessment: { type: 'string' },
+                plan: { type: 'string' },
+              },
+              required: ['subjective', 'objective', 'assessment', 'plan'],
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+
+      return {
+        soap: parseSoapNoteResponse(response.output_text),
+        model,
+      };
+    } catch (error) {
+      const code = error.code || error.error?.code;
+      const status = error.status || error.statusCode;
+      const message = error.message || 'OpenAI request failed';
+
+      if (status === 401 || status === 403 || status === 429) {
+        throw new Error(`OpenAI SOAP note generation failed: ${message}`);
+      }
+
+      modelErrors.push(`${model}: ${code || status || 'error'} ${message}`);
+    }
+  }
+
+  throw new Error(`OpenAI SOAP note generation failed for all models: ${modelErrors.join(' | ')}`);
+};
+
+/**
+ * Generates and persists an AI-authored SOAP clinical note for a scoped wound case.
+ *
+ * Uses `text`, `clinical_note`, or `clinicalNote` as the source narrative, falling
+ * back to the wound case notes. Optional AI guidance can be supplied through
+ * `instructions`, `ai_instructions`, or `aiInstructions`. The generated note is
+ * appended to the case's `clinical_notes` JSON collection.
+ *
+ * @param {import('express').Request} req Nurse-authenticated request with wound case ID.
+ * @param {import('express').Response} res Express response containing the saved note.
+ * @returns {Promise<import('express').Response>}
+ */
 const generateSoapNote = async (req, res) => {
   try {
     const woundCase = await getScopedWoundCase(req, req.params.id);
@@ -821,25 +944,20 @@ const generateSoapNote = async (req, res) => {
       return res.status(404).json({ message: 'Wound case not found' });
     }
 
-    const text = cleanString(req.body.text || req.body.clinical_note || req.body.clinicalNote) || woundCase.notes || '';
-    const soap = {
-      subjective: cleanString(req.body.subjective) || `Pain score ${woundCase.pain_score || 0}/10.`,
-      objective:
-        cleanString(req.body.objective) ||
-        `${woundCase.wound_type} at ${woundCase.body_location || 'recorded location'} measuring L ${woundCase.length_cm || 0} x W ${woundCase.width_cm || 0} x D ${woundCase.depth_cm || 0} cm.`,
-      assessment:
-        cleanString(req.body.assessment) ||
-        text ||
-        `${woundCase.severity_stage || 'Current stage'} wound with ${woundCase.healing_progress || 0}% healing progress.`,
-      plan:
-        cleanString(req.body.plan) ||
-        'Continue wound care, monitor pain, drainage, and signs of infection.',
-    };
+    const text =
+      cleanString(req.body.text || req.body.clinical_note || req.body.clinicalNote) ||
+      cleanString(woundCase.notes) ||
+      '';
+    const aiResult = await callOpenAiSoapService({
+      woundCase,
+      text,
+      instructions: req.body.instructions || req.body.ai_instructions || req.body.aiInstructions,
+    });
     const note = formatClinicalNote({
       note_type: 'soap',
       title: 'AI SOAP Note',
       text,
-      soap,
+      soap: aiResult.soap,
       is_ai_generated: true,
       created_by: req.body.created_by || req.body.createdBy,
     });
@@ -852,6 +970,7 @@ const generateSoapNote = async (req, res) => {
     return res.status(200).json({
       message: 'SOAP note generated successfully',
       clinical_note: note,
+      ai_model: aiResult.model,
     });
   } catch (error) {
     return res.status(500).json({
@@ -1473,6 +1592,17 @@ const downloadReport = async (req, res) => {
   }
 };
 
+/**
+ * Saves a transcript and/or uploaded/remote audio as a voice clinical note.
+ *
+ * Multipart audio is accepted under the configured voice upload aliases and takes
+ * precedence over `audio_url`. This function stores existing transcription text;
+ * speech-to-text processing is handled by `transcribeVoiceDictation`.
+ *
+ * @param {import('express').Request} req Nurse-authenticated request with wound case ID.
+ * @param {import('express').Response} res Express response containing the saved note.
+ * @returns {Promise<import('express').Response>}
+ */
 const saveVoiceDictation = async (req, res) => {
   try {
     const woundCase = await getScopedWoundCase(req, req.params.id);
