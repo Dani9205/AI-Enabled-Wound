@@ -1,5 +1,8 @@
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const path = require('path');
+const OpenAI = require('openai');
 const PDFDocument = require('pdfkit');
 const { Op } = require('sequelize');
 const Patient = require('../models/patientModel');
@@ -7,6 +10,7 @@ const WoundCase = require('../models/woundCaseModel');
 
 const VALID_STATUSES = ['active', 'monitoring', 'healing', 'healed', 'closed'];
 const reportUploadDir = path.join(__dirname, '..', 'uploads', 'reports');
+const uploadsRoot = path.join(__dirname, '..', 'uploads');
 
 fs.mkdirSync(reportUploadDir, { recursive: true });
 
@@ -194,6 +198,7 @@ const formatReport = (report) => ({
   status: cleanString(report.status) || 'new',
   shared_with: asArray(report.shared_with || report.sharedWith),
   report_data: report.report_data || report.reportData || null,
+  is_ai_generated: Boolean(report.is_ai_generated || report.isAiGenerated),
   generated_by: cleanString(report.generated_by || report.generatedBy) || null,
   generated_at: report.generated_at || report.generatedAt || currentTimestamp(),
 });
@@ -1054,6 +1059,177 @@ const uploadedVoiceFileToNoteData = (req, file) => ({
   audio_size: file.size,
 });
 
+const resolveLocalUploadPath = (filePathOrUrl) => {
+  const value = cleanString(filePathOrUrl);
+
+  if (!value) {
+    return null;
+  }
+
+  let uploadPath = value;
+
+  try {
+    uploadPath = new URL(value).pathname;
+  } catch (error) {
+    uploadPath = value;
+  }
+
+  if (!uploadPath.startsWith('/uploads/')) {
+    return null;
+  }
+
+  const relativePath = uploadPath.replace(/^\/uploads\//, '');
+  const resolvedPath = path.resolve(uploadsRoot, relativePath);
+
+  if (!resolvedPath.startsWith(path.resolve(uploadsRoot))) {
+    return null;
+  }
+
+  return resolvedPath;
+};
+
+const parseWhisperResponseText = (body) => {
+  try {
+    const parsed = JSON.parse(body);
+    return cleanString(
+      parsed.text ||
+        parsed.transcript ||
+        parsed.transcription ||
+        parsed.data?.text ||
+        parsed.result?.text
+    );
+  } catch (error) {
+    return cleanString(body);
+  }
+};
+
+const transcribeAudioFile = async (filePath) => {
+  if (!process.env.WHISPER_SERVICE_URL) {
+    throw new Error('WHISPER_SERVICE_URL is required for voice transcription');
+  }
+
+  const serviceUrl = new URL(process.env.WHISPER_SERVICE_URL);
+  const boundary = `----wound-whisper-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const fileName = path.basename(filePath);
+  const fileBuffer = fs.readFileSync(filePath);
+  const multipartHeader = Buffer.from(
+    `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
+      'Content-Type: application/octet-stream\r\n\r\n'
+  );
+  const multipartFooter = Buffer.from(`\r\n--${boundary}--\r\n`);
+  const requestBody = Buffer.concat([multipartHeader, fileBuffer, multipartFooter]);
+  const transport = serviceUrl.protocol === 'https:' ? https : http;
+  const headers = {
+    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    'Content-Length': requestBody.length,
+  };
+
+  if (process.env.WHISPER_SERVICE_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.WHISPER_SERVICE_API_KEY}`;
+  }
+
+  const responseBody = await new Promise((resolve, reject) => {
+    const request = transport.request(
+      {
+        method: 'POST',
+        hostname: serviceUrl.hostname,
+        port: serviceUrl.port || undefined,
+        path: `${serviceUrl.pathname}${serviceUrl.search}`,
+        headers,
+      },
+      (response) => {
+        const chunks = [];
+
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            return reject(
+              new Error(`Whisper service failed with status ${response.statusCode}: ${body}`)
+            );
+          }
+
+          return resolve(body);
+        });
+      }
+    );
+
+    request.on('error', reject);
+    request.write(requestBody);
+    request.end();
+  });
+
+  return parseWhisperResponseText(responseBody);
+};
+
+const parseAiReportResponse = (body) => {
+  try {
+    const parsed = JSON.parse(body);
+    const report = parsed.report || parsed.data || parsed.result || parsed;
+
+    return {
+      title: cleanString(report.title),
+      summary: cleanString(report.summary || report.impression || report.assessment),
+      report_type: cleanString(report.report_type || report.reportType),
+      pages: parseNumber(report.pages),
+      report_data:
+        report.report_data ||
+        report.reportData ||
+        report.sections ||
+        report.content ||
+        report,
+    };
+  } catch (error) {
+    return {
+      summary: cleanString(body),
+      report_data: { generated_text: cleanString(body) },
+    };
+  }
+};
+
+const callOpenAiReportService = async ({ woundCase, reportData, body }) => {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is required for AI report generation');
+  }
+
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const reportType = body.report_type || body.reportType || 'full';
+  const instructions =
+    body.instructions || body.ai_instructions || body.aiInstructions || '';
+  const response = await openai.responses.create({
+    model: process.env.OPENAI_REPORT_MODEL || 'gpt-4.1-mini',
+    input: [
+      {
+        role: 'system',
+        content:
+          'You generate concise clinical wound reports from structured data. Do not invent patient facts. Return only valid JSON with keys: title, summary, report_type, pages, report_data.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          prompt:
+            body.prompt ||
+            'Generate a concise clinical wound report. Include wound summary, current measurements, healing progress, latest clinical note, image count, risk considerations, and recommended follow-up considerations.',
+          report_type: reportType,
+          wound_case: woundCaseResponse(woundCase),
+          report_data: reportData,
+          instructions,
+        }),
+      },
+    ],
+  });
+
+  return parseAiReportResponse(response.output_text || '');
+};
+
+
+
+
+
+
+
 const generateReport = async (req, res) => {
   try {
     const woundCase = await getScopedWoundCase(req, req.params.id);
@@ -1062,17 +1238,33 @@ const generateReport = async (req, res) => {
       return res.status(404).json({ message: 'Wound case not found' });
     }
 
+    const baseReportData = buildReportData(woundCase);
+    const aiReport = await callOpenAiReportService({
+      woundCase,
+      reportData: baseReportData,
+      body: req.body,
+    });
+    const reportData = {
+      ...baseReportData,
+      ai_report: aiReport?.report_data || null,
+      ai_generated_at: currentTimestamp(),
+      ai_provider: 'openai',
+      ai_model: process.env.OPENAI_REPORT_MODEL || 'gpt-4.1-mini',
+    };
     const report = formatReport({
-      title: req.body.title || 'Complete Wound Report',
-      report_type: req.body.report_type || req.body.reportType || 'full',
+      title: req.body.title || aiReport?.title || 'Complete Wound Report',
+      report_type:
+        req.body.report_type || req.body.reportType || aiReport?.report_type || 'full',
       summary:
         req.body.summary ||
+        aiReport?.summary ||
         `${woundCase.wound_type} report for ${woundCase.body_location || 'wound location'}.`,
-      pages: req.body.pages || 1,
+      pages: req.body.pages || aiReport?.pages || 1,
       file_size: req.body.file_size || req.body.fileSize,
       url: req.body.url || req.body.file_url || req.body.fileUrl,
       generated_by: req.body.generated_by || req.body.generatedBy,
-      report_data: buildReportData(woundCase),
+      report_data: reportData,
+      is_ai_generated: true,
     });
 
     await woundCase.update({
@@ -1081,7 +1273,7 @@ const generateReport = async (req, res) => {
     });
 
     return res.status(201).json({
-      message: 'Report generated successfully',
+      message: 'AI report generated successfully',
       report,
     });
   } catch (error) {
@@ -1091,6 +1283,10 @@ const generateReport = async (req, res) => {
     });
   }
 };
+
+
+
+
 
 const findReport = (woundCase, reportId) =>
   asArray(woundCase.reports).find((report) => String(report.id) === String(reportId));
@@ -1282,6 +1478,119 @@ const saveVoiceDictation = async (req, res) => {
   }
 };
 
+
+
+
+
+const transcribeVoiceDictation = async (req, res) => {
+  try {
+    const woundCase = await getScopedWoundCase(req, req.params.id);
+
+    if (!woundCase) {
+      return res.status(404).json({ message: 'Wound case not found' });
+    }
+
+    const uploadedVoiceFile = getUploadedVoiceDictationFile(req);
+    const clinicalNotes = asArray(woundCase.clinical_notes);
+    const noteId = req.params.noteId || req.body.note_id || req.body.noteId;
+    const noteIndex = noteId
+      ? clinicalNotes.findIndex((note) => String(note.id) === String(noteId))
+      : -1;
+
+    if (noteId && noteIndex === -1) {
+      return res.status(404).json({ message: 'Voice note not found' });
+    }
+
+    const existingNote = noteIndex >= 0 ? clinicalNotes[noteIndex] : null;
+    const uploadedVoiceData = uploadedVoiceFile
+      ? uploadedVoiceFileToNoteData(req, uploadedVoiceFile)
+      : {};
+    const localAudioPath = uploadedVoiceFile
+      ? uploadedVoiceFile.path
+      : resolveLocalUploadPath(
+          existingNote?.audio_file_path ||
+            existingNote?.audioFilePath ||
+            existingNote?.audio_url ||
+            existingNote?.audioUrl
+        );
+
+    if (!localAudioPath || !fs.existsSync(localAudioPath)) {
+      return res.status(400).json({
+        message: 'A saved local audio file or uploaded audio file is required',
+      });
+    }
+
+    const transcript = await transcribeAudioFile(localAudioPath);
+
+    if (!transcript) {
+      return res.status(422).json({ message: 'Audio transcription returned no text' });
+    }
+
+    const note = formatClinicalNote({
+      ...(existingNote || {}),
+      note_type: 'voice',
+      title: req.body.title || existingNote?.title || 'Voice Note',
+      text: transcript,
+      audio_url:
+        uploadedVoiceData.audio_url ||
+        existingNote?.audio_url ||
+        existingNote?.audioUrl,
+      audio_file_path:
+        uploadedVoiceData.audio_file_path ||
+        existingNote?.audio_file_path ||
+        existingNote?.audioFilePath,
+      audio_original_name:
+        uploadedVoiceData.audio_original_name ||
+        existingNote?.audio_original_name ||
+        existingNote?.audioOriginalName,
+      audio_mime_type:
+        uploadedVoiceData.audio_mime_type ||
+        existingNote?.audio_mime_type ||
+        existingNote?.audioMimeType,
+      audio_size:
+        uploadedVoiceData.audio_size ||
+        existingNote?.audio_size ||
+        existingNote?.audioSize,
+      duration_seconds:
+        req.body.duration_seconds ||
+        req.body.durationSeconds ||
+        existingNote?.duration_seconds ||
+        existingNote?.durationSeconds,
+      created_by:
+        req.body.created_by ||
+        req.body.createdBy ||
+        existingNote?.created_by ||
+        existingNote?.createdBy,
+    });
+
+    const nextClinicalNotes =
+      noteIndex >= 0
+        ? clinicalNotes.map((item, index) => (index === noteIndex ? note : item))
+        : [...clinicalNotes, note];
+
+    await woundCase.update({
+      clinical_notes: nextClinicalNotes,
+      last_updated_at: new Date(),
+    });
+
+    return res.status(noteIndex >= 0 ? 200 : 201).json({
+      message: 'Voice transcribed successfully',
+      transcript,
+      clinical_note: note,
+      wound_case: woundCaseResponse(woundCase),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Voice transcription failed',
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
 const addWoundUpdate = async (req, res) => {
   try {
     const woundCase = await getScopedWoundCase(req, req.params.id);
@@ -1397,5 +1706,6 @@ module.exports = {
   getTimeline,
   saveVoiceDictation,
   shareReport,
+  transcribeVoiceDictation,
   updateWoundCase,
 };

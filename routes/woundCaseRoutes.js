@@ -20,6 +20,7 @@ const {
   getTimeline,
   saveVoiceDictation,
   shareReport,
+  transcribeVoiceDictation,
   updateWoundCase,
 } = require('../controllers/woundCaseController');
 const { authenticateToken, requireRoles } = require('../middleware/authMiddleware');
@@ -47,8 +48,10 @@ router.delete('/delete-wound-image/:id/:imageId', deleteWoundImage);
 router.patch('/add-measurement/:id', addMeasurement);
 router.patch('/add-note/:id', addClinicalNote);
 router.post('/save-voice-dictation/:id', uploadVoiceDictation, saveVoiceDictation);
+router.post('/transcribe-voice-dictation/:id/:noteId?', uploadVoiceDictation, transcribeVoiceDictation);
 router.post('/generate-soap-note/:id', generateSoapNote);
 router.post('/generate-report/:id', generateReport);
+router.post('/generate-ai-report/:id', generateReport);
 router.patch('/add-report/:id', addReport);
 router.patch('/share-report/:id/:reportId', shareReport);
 router.delete('/delete-wound-case/:id', deleteWoundCase);

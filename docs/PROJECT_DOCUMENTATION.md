@@ -26,6 +26,8 @@ Main responsibilities:
 | Mail | Nodemailer |
 | File uploads | Multer |
 | PDF generation | PDFKit |
+| Speech-to-text | Configurable Whisper service |
+| AI report generation | OpenAI Responses API |
 | Env loading | dotenv |
 | Dev server | nodemon |
 | Auth/security helpers | Node crypto, custom JWT-style HMAC token helpers |
@@ -106,6 +108,10 @@ DB_PORT=3306
 DB_DIALECT=mysql
 JWT_SECRET=your_secret_key
 JWT_EXPIRES_IN_SECONDS=86400
+WHISPER_SERVICE_URL=http://localhost:8000/transcribe
+WHISPER_SERVICE_API_KEY=optional_service_token
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_REPORT_MODEL=gpt-4.1-mini
 DB_SYNC_ALTER=false
 APPLE_BUNDLE_ID=com.yourcompany.yourapp
 APP_STORE_BASIC_PRODUCT_ID=com.yourcompany.yourapp.subscription.basic.monthly
@@ -324,9 +330,11 @@ Routes are mounted in `app.js`.
 | `GET` | `/get-notes/:id` | Get clinical notes. |
 | `PATCH` | `/add-note/:id` | Add clinical note. |
 | `POST` | `/save-voice-dictation/:id` | Save voice dictation transcript and/or uploaded audio file. |
+| `POST` | `/transcribe-voice-dictation/:id/:noteId?` | Transcribe uploaded or saved voice dictation audio and save transcript. |
 | `POST` | `/generate-soap-note/:id` | Generate SOAP note placeholder. |
 | `GET` | `/get-reports/:id` | Get reports. |
-| `POST` | `/generate-report/:id` | Generate report metadata. |
+| `POST` | `/generate-report/:id` | Generate report metadata; uses AI report service when configured. |
+| `POST` | `/generate-ai-report/:id` | Alias for AI-backed report generation. |
 | `PATCH` | `/add-report/:id` | Add report metadata. |
 | `GET` | `/preview-report/:id/:reportId` | Preview report data. |
 | `GET` | `/download-report/:id/:reportId` | Generate/save report PDF and return download URL. |
@@ -740,12 +748,20 @@ Voice dictation uploads:
 | Endpoint | Auth | Form-data File Keys | Max Size | Behavior |
 | --- | --- | --- | --- | --- |
 | `POST /api/wound-cases/save-voice-dictation/:id` | Bearer token required, `nurse` role | `audio`, `voice`, `file`, `voice_file`, `voiceFile`, `audio_file`, `audioFile` | 25 MB | Saves an audio file and/or transcript as a `voice` clinical note. |
+| `POST /api/wound-cases/transcribe-voice-dictation/:id/:noteId?` | Bearer token required, `nurse` role | Same keys when uploading a new file | 25 MB | Sends uploaded audio, or an existing local note audio file when `noteId` is provided, to the configured Whisper service and saves the returned text as a `voice` clinical note. |
 
 Report PDF generation:
 
 | Endpoint | Auth | Behavior |
 | --- | --- | --- |
 | `GET /api/wound-cases/download-report/:id/:reportId` | Bearer token required, `nurse` role | Builds a PDF from wound case/report data, saves it under `uploads/reports/`, updates the report metadata with `url`, `file_url`, `file_path`, `file_size`, and returns `download_url`. |
+
+AI report generation:
+
+| Endpoint | Auth | Behavior |
+| --- | --- | --- |
+| `POST /api/wound-cases/generate-report/:id` | Bearer token required, `nurse` role | Sends structured wound case data to OpenAI, saves the AI summary/report data, and requires `OPENAI_API_KEY`. |
+| `POST /api/wound-cases/generate-ai-report/:id` | Bearer token required, `nurse` role | Alias for the same AI-backed report generation behavior. |
 
 All upload middleware rejects non-image MIME types. Upload URLs use the current request host, for example:
 
