@@ -113,6 +113,9 @@ const ensureValidCode = (user, code, purpose) => {
   return null;
 };
 
+
+
+
 const uploadAuthImage = async (req, res) => {
   try {
     if (!req.user) {

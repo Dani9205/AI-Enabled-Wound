@@ -22,7 +22,20 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  const allowedExtensions = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.heic',
+    '.heif',
+    '.gif',
+  ]);
+  const isImageMime = file.mimetype && file.mimetype.startsWith('image/');
+  const hasImageExtension = allowedExtensions.has(extension);
+
+  if (!isImageMime && !hasImageExtension) {
     return cb(new Error('Only image files are allowed'));
   }
 
@@ -33,7 +46,7 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024,
+    fileSize: 20 * 1024 * 1024,
     files: 10,
   },
 });
@@ -46,12 +59,26 @@ const uploadWoundImages = (req, res, next) => {
     { name: 'files', maxCount: 10 },
     { name: 'wound_image', maxCount: 1 },
     { name: 'wound_images', maxCount: 10 },
+    { name: 'woundImage', maxCount: 1 },
+    { name: 'woundImages', maxCount: 10 },
   ])(req, res, (error) => {
     if (!error) {
       return next();
     }
 
     if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          message: 'Each wound image must be 20 MB or smaller',
+        });
+      }
+
+      if (error.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).json({
+          message: 'You can upload up to 10 wound images at a time',
+        });
+      }
+
       return res.status(400).json({ message: error.message });
     }
 

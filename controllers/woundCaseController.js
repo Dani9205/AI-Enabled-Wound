@@ -577,14 +577,21 @@ const addWoundImage = async (req, res) => {
       return res.status(400).json({ message: 'image file or image url is required' });
     }
 
+    const nextImages = [...asArray(woundCase.images), ...newImages];
+
     await woundCase.update({
-      images: [...asArray(woundCase.images), ...newImages],
+      images: nextImages,
       last_updated_at: new Date(),
     });
 
     return res.status(200).json({
       message: 'Wound image added successfully',
-      wound_case: woundCaseResponse(woundCase),
+      images: nextImages,
+      added_images: newImages,
+      wound_case: woundCaseResponse({
+        ...woundCase.get({ plain: true }),
+        images: nextImages,
+      }),
     });
   } catch (error) {
     return res.status(500).json({
@@ -716,7 +723,12 @@ const getImages = async (req, res) => {
       return res.status(404).json({ message: 'Wound case not found' });
     }
 
-    return res.status(200).json({ images: asArray(woundCase.images) });
+    const images = asArray(woundCase.images);
+
+    return res.status(200).json({
+      images,
+      images_count: images.length,
+    });
   } catch (error) {
     return res.status(500).json({
       message: 'Wound images fetch failed',

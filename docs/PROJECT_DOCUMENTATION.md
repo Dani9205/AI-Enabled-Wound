@@ -154,7 +154,7 @@ npm run dev
 The local server starts at:
 
 ```txt
-http://localhost:3000
+https://aiwond.appistansoft.com
 ```
 
 or the configured `PORT`. The production/reference URL used in the docs is `https://aiwond.appistansoft.com`.
@@ -733,15 +733,15 @@ Profile photo uploads:
 
 | Endpoint | Auth | Form-data File Keys | Max Size | Behavior |
 | --- | --- | --- | --- | --- |
-| `POST /api/auth/upload-image` | Bearer token required | `image`, `file`, `photo`, `profile_photo`, `profilePhoto` | 5 MB | Saves image and updates only `req.user.profile_photo_url`. |
-| `POST /api/auth/create-account` | Public | Same keys | 5 MB | Optional image is saved and assigned to the newly created user's `profile_photo_url`. |
-| `POST /api/auth/create-organization-account` | Public | Same keys | 5 MB | Optional image is saved and assigned to the newly created organization request user's `profile_photo_url`. |
+| `POST /api/auth/upload-image` | Bearer token required | `image`, `file`, `photo`, `profile_photo`, `profilePhoto` | 15 MB | Saves image and updates only `req.user.profile_photo_url`. |
+| `POST /api/auth/create-account` | Public | Same keys | 15 MB | Optional image is saved and assigned to the newly created user's `profile_photo_url`. |
+| `POST /api/auth/create-organization-account` | Public | Same keys | 15 MB | Optional image is saved and assigned to the newly created organization request user's `profile_photo_url`. |
 
 Wound image uploads:
 
 | Endpoint | Auth | Form-data File Keys | Limits | Behavior |
 | --- | --- | --- | --- | --- |
-| `PATCH /api/wound-cases/add-wound-image/:id` | Bearer token required, `nurse` role | `image`, `images`, `file`, `files`, `wound_image`, `wound_images` | 10 MB per file, up to 10 files | Saves image files and appends their public URLs/metadata to the wound case `images` JSON array. |
+| `PATCH /api/wound-cases/add-wound-image/:id` | Bearer token required, `nurse` role | `image`, `images`, `file`, `files`, `wound_image`, `wound_images` | 20 MB per file, up to 10 files | Saves image files and appends their public URLs/metadata to the wound case `images` JSON array. |
 
 Voice dictation uploads:
 

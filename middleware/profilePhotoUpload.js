@@ -22,7 +22,20 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  const allowedExtensions = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.heic',
+    '.heif',
+    '.gif',
+  ]);
+  const isImageMime = file.mimetype && file.mimetype.startsWith('image/');
+  const hasImageExtension = allowedExtensions.has(extension);
+
+  if (!isImageMime && !hasImageExtension) {
     return cb(new Error('Only image files are allowed'));
   }
 
@@ -33,7 +46,7 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    fileSize: 15 * 1024 * 1024,
   },
 });
 
@@ -50,6 +63,12 @@ const uploadProfilePhoto = (req, res, next) => {
     }
 
     if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          message: 'Profile photo must be 15 MB or smaller',
+        });
+      }
+
       return res.status(400).json({ message: error.message });
     }
 
