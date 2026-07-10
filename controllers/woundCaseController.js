@@ -1202,38 +1202,68 @@ const parseAiReportResponse = (body) => {
 };
 
 const callOpenAiReportService = async ({ woundCase, reportData, body }) => {
-  if (!process.env.OPENAI_API_KEY) {
+  const apiKey = cleanString(process.env.OPENAI_API_KEY);
+
+  if (!apiKey) {
     throw new Error('OPENAI_API_KEY is required for AI report generation');
   }
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = new OpenAI({ apiKey });
   const reportType = body.report_type || body.reportType || 'full';
   const instructions =
     body.instructions || body.ai_instructions || body.aiInstructions || '';
-  const response = await openai.responses.create({
-    model: process.env.OPENAI_REPORT_MODEL || 'gpt-4.1-mini',
-    input: [
-      {
-        role: 'system',
-        content:
-          'You generate concise clinical wound reports from structured data. Do not invent patient facts. Return only valid JSON with keys: title, summary, report_type, pages, report_data.',
-      },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          prompt:
-            body.prompt ||
-            'Generate a concise clinical wound report. Include wound summary, current measurements, healing progress, latest clinical note, image count, risk considerations, and recommended follow-up considerations.',
-          report_type: reportType,
-          wound_case: woundCaseResponse(woundCase),
-          report_data: reportData,
-          instructions,
-        }),
-      },
-    ],
-  });
+  const modelCandidates = [
+    cleanString(process.env.OPENAI_REPORT_MODEL),
+    cleanString(process.env.OPENAI_REPORT_FALLBACK_MODEL),
+    'gpt-4.1-mini',
+  ].filter((model, index, models) => model && models.indexOf(model) === index);
+  const input = [
+    {
+      role: 'system',
+      content:
+        'You generate concise clinical wound reports from structured data. Do not invent patient facts. Return only valid JSON with keys: title, summary, report_type, pages, report_data.',
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        prompt:
+          body.prompt ||
+          'Generate a concise clinical wound report. Include wound summary, current measurements, healing progress, latest clinical note, image count, risk considerations, and recommended follow-up considerations.',
+        report_type: reportType,
+        wound_case: woundCaseResponse(woundCase),
+        report_data: reportData,
+        instructions,
+      }),
+    },
+  ];
+  const modelErrors = [];
 
-  return parseAiReportResponse(response.output_text || '');
+  for (const model of modelCandidates) {
+    try {
+      const response = await openai.responses.create({
+        model,
+        input,
+      });
+      const aiReport = parseAiReportResponse(response.output_text || '');
+
+      return {
+        ...aiReport,
+        model,
+      };
+    } catch (error) {
+      const code = error.code || error.error?.code;
+      const status = error.status || error.statusCode;
+      const message = error.message || 'OpenAI request failed';
+
+      if (status === 401 || status === 403 || status === 429) {
+        throw new Error(`OpenAI report generation failed: ${message}`);
+      }
+
+      modelErrors.push(`${model}: ${code || status || 'error'} ${message}`);
+    }
+  }
+
+  throw new Error(`OpenAI report generation failed for all models: ${modelErrors.join(' | ')}`);
 };
 
 
@@ -1261,7 +1291,7 @@ const generateReport = async (req, res) => {
       ai_report: aiReport?.report_data || null,
       ai_generated_at: currentTimestamp(),
       ai_provider: 'openai',
-      ai_model: process.env.OPENAI_REPORT_MODEL || 'gpt-4.1-mini',
+      ai_model: aiReport?.model || process.env.OPENAI_REPORT_MODEL || 'gpt-4.1-mini',
     };
     const report = formatReport({
       title: req.body.title || aiReport?.title || 'Complete Wound Report',

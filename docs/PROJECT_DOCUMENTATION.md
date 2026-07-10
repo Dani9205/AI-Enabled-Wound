@@ -113,6 +113,7 @@ WHISPER_SERVICE_URL=http://localhost:8000/transcribe
 WHISPER_SERVICE_API_KEY=optional_service_token
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_REPORT_MODEL=gpt-4.1-mini
+OPENAI_REPORT_FALLBACK_MODEL=gpt-4.1-mini
 DB_SYNC_ALTER=false
 APPLE_BUNDLE_ID=com.yourcompany.yourapp
 APP_STORE_BASIC_PRODUCT_ID=com.yourcompany.yourapp.subscription.basic.monthly
