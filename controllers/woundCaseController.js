@@ -1240,11 +1240,15 @@ const transcribeAudioFile = async (filePath) => {
   }
 
   const serviceUrl = new URL(process.env.WHISPER_SERVICE_URL);
+  const whisperModel = cleanString(process.env.WHISPER_MODEL) || 'whisper-1';
   const boundary = `----wound-whisper-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const fileName = path.basename(filePath);
   const fileBuffer = fs.readFileSync(filePath);
   const multipartHeader = Buffer.from(
     `--${boundary}\r\n` +
+      'Content-Disposition: form-data; name="model"\r\n\r\n' +
+      `${whisperModel}\r\n` +
+      `--${boundary}\r\n` +
       `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
       'Content-Type: application/octet-stream\r\n\r\n'
   );
