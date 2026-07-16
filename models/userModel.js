@@ -37,6 +37,14 @@ const User = sequelize.define(
       type: DataTypes.STRING(255),
       allowNull: true,
     },
+    organization_id: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: 'organizations',
+        key: 'id',
+      },
+    },
     organization_hospital: {
       type: DataTypes.STRING(150),
       allowNull: true,
@@ -160,6 +168,7 @@ const User = sequelize.define(
     underscored: true,
     indexes: [
       { fields: ['role'] },
+      { fields: ['organization_id'] },
       { fields: ['request_status'] },
       { fields: ['account_status'] },
     ],

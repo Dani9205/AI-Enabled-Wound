@@ -1,4 +1,5 @@
 const User = require('../models/userModel');
+const Organization = require('../models/organizationModel');
 const { sendEmailCode } = require('../utils/mailer');
 const {
   generateSixDigitCode,
@@ -16,6 +17,26 @@ const isTruthy = (value) =>
   value === 1 ||
   ['true', '1'].includes(String(value).trim().toLowerCase());
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const resolveOrganization = async ({ organizationCode, organizationHospital }) => {
+  const organizationByCode = await Organization.findOne({
+    where: {
+      code: organizationCode,
+      status: 'active',
+    },
+  });
+
+  if (organizationByCode) {
+    return organizationByCode;
+  }
+
+  return Organization.findOne({
+    where: {
+      name: organizationHospital,
+      status: 'active',
+    },
+  });
+};
 
 const getRequestBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
 
@@ -370,6 +391,18 @@ const createOrganizationAccount = async (req, res) => {
       });
     }
 
+    const organization = await resolveOrganization({
+      organizationCode: organization_code,
+      organizationHospital: organization_hospital,
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        message:
+          'Selected hospital/organization could not be found. Please check the organization code or hospital name and try again.',
+      });
+    }
+
     const user = await User.create({
       name: `${first_name} ${last_name}`.trim(),
       first_name,
@@ -377,8 +410,9 @@ const createOrganizationAccount = async (req, res) => {
       email,
       phone_number,
       profile_photo_url,
-      organization_hospital,
-      organization_code,
+      organization_id: organization.id,
+      organization_hospital: organization.name,
+      organization_code: organization.code,
       role,
       password_hash: hashPassword(password),
       request_accepted: false,
