@@ -10,6 +10,7 @@ require('./models/woundCaseModel');
 require('./models/patientHandoffModel');
 require('./models/notificationModel');
 require('./models/subscriptionModel');
+require('./models/organizationModel');
 const authRoutes = require('./routes/authRoutes');
 const patientRoutes = require('./routes/patientRoutes');
 const taskRoutes = require('./routes/taskRoutes');

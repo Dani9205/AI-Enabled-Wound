@@ -1,4 +1,6 @@
 const User = require('../models/userModel');
+const Organization = require('../models/organizationModel');
+const { Op } = require('sequelize');
 const { signToken, verifyPassword } = require('../utils/security');
 
 const ADMIN_ROLES = ['admin', 'super_admin'];
@@ -69,6 +71,89 @@ const adminLogin = async (req, res) => {
   }
 };
 
+const getOrganizations = async (req, res) => {
+  try {
+    const organizations = await Organization.findAll({
+      order: [['created_at', 'DESC']],
+    });
+
+    return res.status(200).json({
+      message: 'Organizations retrieved successfully',
+      total: organizations.length,
+      organizations,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Failed to retrieve organizations',
+      error: error.message,
+    });
+  }
+};
+
+const getOrganizationClinicalUsers = async (req, res) => {
+  try {
+    const organizationCode = String(req.params.organizationCode || '').trim();
+
+    if (!organizationCode) {
+      return res.status(400).json({ message: 'Organization code is required' });
+    }
+
+    const [organization, users] = await Promise.all([
+      Organization.findOne({ where: { code: organizationCode } }),
+      User.findAll({
+        where: {
+          organization_code: organizationCode,
+          role: { [Op.in]: ['doctor', 'nurse'] },
+        },
+        attributes: [
+          'id',
+          'name',
+          'first_name',
+          'last_name',
+          'email',
+          'phone_number',
+          'profile_photo_url',
+          'organization_hospital',
+          'organization_code',
+          'role',
+          'shift',
+          'professional_title',
+          'request_accepted',
+          'request_status',
+          'is_email_verified',
+          'account_status',
+          'created_at',
+        ],
+        order: [
+          ['role', 'ASC'],
+          ['name', 'ASC'],
+        ],
+      }),
+    ]);
+
+    return res.status(200).json({
+      message: 'Organization doctors and nurses retrieved successfully',
+      organization: organization
+        ? {
+            id: organization.id,
+            name: organization.name,
+            code: organization.code,
+            status: organization.status,
+          }
+        : { code: organizationCode },
+      total: users.length,
+      users,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Failed to retrieve organization doctors and nurses',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   adminLogin,
+  getOrganizations,
+  getOrganizationClinicalUsers,
 };
