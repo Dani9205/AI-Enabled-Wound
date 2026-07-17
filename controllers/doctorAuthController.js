@@ -393,6 +393,12 @@ const setAccountPassword = async (req, res) => {
       return res.status(400).json({ message: professionalValidationError });
     }
 
+    if (!professionalInfo.organizationId) {
+      return res.status(400).json({
+        message: 'organization_id is required',
+      });
+    }
+
     if (!password || !confirmPassword) {
       return res.status(400).json({
         message: 'Password and confirm password are required',
@@ -427,8 +433,6 @@ const setAccountPassword = async (req, res) => {
 
     const organization = await resolveOrganization({
       organizationId: professionalInfo.organizationId,
-      organizationCode: professionalInfo.organizationCode,
-      organizationHospital: professionalInfo.organizationHospital,
     });
 
     if (!organization) {
@@ -487,13 +491,33 @@ const setAccountPassword = async (req, res) => {
         { transaction }
       );
 
-      // Read the persisted value back from MySQL so a doctor can never be
-      // created successfully with a silently missing organization link.
-      await createdUser.reload({ transaction });
+      const organizationId = Number(professionalInfo.organizationId);
 
-      if (Number(createdUser.organization_id) !== Number(organization.id)) {
+      await sequelize.query(
+        'UPDATE users SET organization_id = :organizationId WHERE id = :userId',
+        {
+          replacements: {
+            organizationId,
+            userId: createdUser.id,
+          },
+          transaction,
+        }
+      );
+
+      const [persistedUsers] = await sequelize.query(
+        'SELECT organization_id FROM users WHERE id = :userId LIMIT 1',
+        {
+          replacements: { userId: createdUser.id },
+          transaction,
+        }
+      );
+      const persistedOrganizationId = persistedUsers[0]?.organization_id;
+
+      if (Number(persistedOrganizationId) !== organizationId) {
         throw new Error('Doctor organization ID was not persisted');
       }
+
+      createdUser.setDataValue('organization_id', persistedOrganizationId);
 
       return createdUser;
     });
