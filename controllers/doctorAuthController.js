@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const User = require('../models/userModel');
 const { sendEmailCode } = require('../utils/mailer');
+const { resolveOrganization } = require('../utils/organizationResolver');
 const {
   generateSixDigitCode,
   hashPassword,
@@ -405,6 +406,18 @@ const setAccountPassword = async (req, res) => {
       return res.status(409).json({ message: 'Email already exists' });
     }
 
+    const organization = await resolveOrganization({
+      organizationCode: professionalInfo.organizationCode,
+      organizationHospital: professionalInfo.organizationHospital,
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        message:
+          'Selected hospital/organization could not be found. Please check the organization code or hospital name and try again.',
+      });
+    }
+
     const doctorProfile = {
       gender: personalInfo.gender,
       date_of_birth: personalInfo.dateOfBirth || null,
@@ -435,8 +448,9 @@ const setAccountPassword = async (req, res) => {
       email: personalInfo.email,
       phone_number: personalInfo.phoneNumber,
       profile_photo_url: personalInfo.profilePhotoUrl || null,
-      organization_hospital: professionalInfo.organizationHospital,
-      organization_code: professionalInfo.organizationCode || null,
+      organization_id: organization.id,
+      organization_hospital: organization.name,
+      organization_code: organization.code,
       professional_title: professionalInfo.titleDesignation,
       role: DOCTOR_ROLE,
       password_hash: hashPassword(password),

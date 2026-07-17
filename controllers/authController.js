@@ -1,6 +1,6 @@
 const User = require('../models/userModel');
-const Organization = require('../models/organizationModel');
 const { sendEmailCode } = require('../utils/mailer');
+const { resolveOrganization } = require('../utils/organizationResolver');
 const {
   generateSixDigitCode,
   hashPassword,
@@ -17,26 +17,6 @@ const isTruthy = (value) =>
   value === 1 ||
   ['true', '1'].includes(String(value).trim().toLowerCase());
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-const resolveOrganization = async ({ organizationCode, organizationHospital }) => {
-  const organizationByCode = await Organization.findOne({
-    where: {
-      code: organizationCode,
-      status: 'active',
-    },
-  });
-
-  if (organizationByCode) {
-    return organizationByCode;
-  }
-
-  return Organization.findOne({
-    where: {
-      name: organizationHospital,
-      status: 'active',
-    },
-  });
-};
 
 const getRequestBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
 

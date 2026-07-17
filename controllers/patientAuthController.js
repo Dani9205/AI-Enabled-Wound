@@ -1,5 +1,6 @@
 const User = require('../models/userModel');
 const { sendEmailCode } = require('../utils/mailer');
+const { resolveOrganization } = require('../utils/organizationResolver');
 const {
   generateSixDigitCode,
   hashPassword,
@@ -102,6 +103,9 @@ const getProfessionalInfo = (body) => ({
       body.organization_hospital ||
       body.organizationHospital
   ),
+  organizationCode: normalizeText(
+    body.organization_code || body.organizationCode
+  ),
   patientIdMrn: normalizeText(
     body.patient_id_mrn ||
       body.patientIdMrn ||
@@ -194,6 +198,7 @@ const submitProfessionalCredentials = async (req, res) => {
       next_step: 'set-password',
       professional_details: {
         hospital_institution: professionalInfo.hospitalInstitution,
+        organization_code: professionalInfo.organizationCode || null,
         patient_id_mrn: professionalInfo.patientIdMrn,
       },
       note:
@@ -258,6 +263,18 @@ const setAccountPassword = async (req, res) => {
       return res.status(409).json({ message: 'Email already exists' });
     }
 
+    const organization = await resolveOrganization({
+      organizationCode: professionalInfo.organizationCode,
+      organizationHospital: professionalInfo.hospitalInstitution,
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        message:
+          'Selected hospital/organization could not be found. Please check the organization code or hospital name and try again.',
+      });
+    }
+
     const patientProfile = {
       gender: personalInfo.gender,
       date_of_birth: personalInfo.dateOfBirth || null,
@@ -286,7 +303,9 @@ const setAccountPassword = async (req, res) => {
       email: personalInfo.email,
       phone_number: personalInfo.phoneNumber,
       profile_photo_url: personalInfo.profilePhotoUrl || null,
-      organization_hospital: professionalInfo.hospitalInstitution,
+      organization_id: organization.id,
+      organization_hospital: organization.name,
+      organization_code: organization.code,
       role: PATIENT_ROLE,
       password_hash: hashPassword(password),
       request_accepted: false,
