@@ -6,7 +6,9 @@ const {
   forgotPassword,
   getAuthenticatedUser,
   resetPassword,
+  removeFcmToken,
   signin,
+  updateFcmToken,
   uploadAuthImage,
   verifySigninCode,
   changeRole,
@@ -22,6 +24,8 @@ router.post('/create-organization-account', uploadProfilePhoto, createOrganizati
 router.post('/upload-image', authenticateToken, uploadProfilePhoto, uploadAuthImage);
 router.put('/accept-organization-request', acceptOrganizationRequest);
 router.post('/signin', signin);
+router.put('/fcm-token', authenticateToken, updateFcmToken);
+router.delete('/fcm-token', authenticateToken, removeFcmToken);
 router.post('/verify-code', verifySigninCode);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);

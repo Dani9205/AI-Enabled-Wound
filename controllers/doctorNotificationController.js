@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const Notification = require('../models/notificationModel');
 const User = require('../models/userModel');
+const { sendNotificationPush } = require('../services/pushNotificationService');
 
 const VALID_TABS = ['all', 'unread', 'read'];
 const VALID_TYPES = [
@@ -425,10 +426,12 @@ const createNotification = async (req, res) => {
       action_url: cleanString(req.body.action_url || req.body.actionUrl) || null,
       metadata: asObject(req.body.metadata),
     });
+    const push = await sendNotificationPush(notification);
 
     return res.status(201).json({
       message: 'Doctor notification created successfully',
       notification: notificationResponse(notification),
+      push,
       counts: await getCounts(doctorId),
     });
   } catch (error) {

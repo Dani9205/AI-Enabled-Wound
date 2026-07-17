@@ -62,6 +62,9 @@ CALL add_column_if_missing('users', 'verification_purpose', 'ENUM(''signup'',''s
 CALL add_column_if_missing('users', 'is_email_verified', 'TINYINT(1) NOT NULL DEFAULT 0');
 CALL add_column_if_missing('users', 'last_login_at', 'DATETIME NULL');
 CALL add_column_if_missing('users', 'auth_token', 'TEXT NULL');
+CALL add_column_if_missing('users', 'fcm_token', 'TEXT NULL');
+CALL add_column_if_missing('users', 'fcm_platform', 'ENUM(''android'',''ios'',''web'') NULL');
+CALL add_column_if_missing('users', 'fcm_token_updated_at', 'DATETIME NULL');
 CALL add_column_if_missing('users', 'notification_preferences', 'JSON NULL');
 CALL add_column_if_missing('users', 'app_settings', 'JSON NULL');
 CALL add_column_if_missing('users', 'security_settings', 'JSON NULL');

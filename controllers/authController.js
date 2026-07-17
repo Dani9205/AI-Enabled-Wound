@@ -17,6 +17,12 @@ const isTruthy = (value) =>
   value === 1 ||
   ['true', '1'].includes(String(value).trim().toLowerCase());
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const FCM_PLATFORMS = ['android', 'ios', 'web'];
+
+const normalizeFcmPlatform = (value) => {
+  const platform = String(value || '').trim().toLowerCase();
+  return platform || null;
+};
 
 const getRequestBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
 
@@ -484,10 +490,20 @@ const signin = async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const { password } = req.body;
+    const fcmToken = String(req.body.fcm_token || req.body.fcmToken || '').trim();
+    const fcmPlatform = normalizeFcmPlatform(
+      req.body.fcm_platform || req.body.fcmPlatform
+    );
 
     if (!email || !password) {
       return res.status(400).json({
         message: 'Email and password are required',
+      });
+    }
+
+    if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
+      return res.status(400).json({
+        message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
       });
     }
 
@@ -513,6 +529,13 @@ const signin = async (req, res) => {
 
     user.last_login_at = new Date();
     user.account_status = 'active';
+
+    if (fcmToken) {
+      user.fcm_token = fcmToken;
+      user.fcm_platform = fcmPlatform;
+      user.fcm_token_updated_at = new Date();
+    }
+
     await user.save();
 
     const token = signToken({
@@ -532,6 +555,59 @@ const signin = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: 'Signin failed',
+      error: error.message,
+    });
+  }
+};
+
+const updateFcmToken = async (req, res) => {
+  try {
+    const fcmToken = String(req.body.fcm_token || req.body.fcmToken || '').trim();
+    const fcmPlatform = normalizeFcmPlatform(
+      req.body.fcm_platform || req.body.fcmPlatform
+    );
+
+    if (!fcmToken) {
+      return res.status(400).json({ message: 'fcm_token is required' });
+    }
+
+    if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
+      return res.status(400).json({
+        message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
+      });
+    }
+
+    await req.user.update({
+      fcm_token: fcmToken,
+      fcm_platform: fcmPlatform,
+      fcm_token_updated_at: new Date(),
+    });
+
+    return res.status(200).json({
+      message: 'FCM token updated successfully',
+      fcm_platform: req.user.fcm_platform,
+      fcm_token_updated_at: req.user.fcm_token_updated_at,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'FCM token update failed',
+      error: error.message,
+    });
+  }
+};
+
+const removeFcmToken = async (req, res) => {
+  try {
+    await req.user.update({
+      fcm_token: null,
+      fcm_platform: null,
+      fcm_token_updated_at: null,
+    });
+
+    return res.status(200).json({ message: 'FCM token removed successfully' });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'FCM token removal failed',
       error: error.message,
     });
   }
@@ -818,7 +894,9 @@ module.exports = {
   forgotPassword,
   getAuthenticatedUser,
   resetPassword,
+  removeFcmToken,
   signin,
+  updateFcmToken,
   uploadAuthImage,
   verifySigninCode,
   changeRole,

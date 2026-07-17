@@ -128,6 +128,18 @@ const User = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    fcm_token: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    fcm_platform: {
+      type: DataTypes.ENUM('android', 'ios', 'web'),
+      allowNull: true,
+    },
+    fcm_token_updated_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     notification_preferences: {
       type: DataTypes.JSON,
       allowNull: true,

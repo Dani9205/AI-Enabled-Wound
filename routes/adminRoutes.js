@@ -9,11 +9,7 @@ const { adminAuthMiddleware } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.post('/login', adminLogin);
-router.get('/organizations', adminAuthMiddleware, getOrganizations);
-router.get(
-  '/organizations/:organizationCode/users',
-  adminAuthMiddleware,
-  getOrganizationClinicalUsers
-);
+router.get('/organizations', getOrganizations);
+router.get('/organizations/:organizationCode/users', getOrganizationClinicalUsers);
 
 module.exports = router;
