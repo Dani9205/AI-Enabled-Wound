@@ -47,6 +47,7 @@ CALL add_column_if_missing('users', 'first_name', 'VARCHAR(100) NULL');
 CALL add_column_if_missing('users', 'last_name', 'VARCHAR(100) NULL');
 CALL add_column_if_missing('users', 'phone_number', 'VARCHAR(30) NULL');
 CALL add_column_if_missing('users', 'profile_photo_url', 'VARCHAR(255) NULL');
+CALL add_column_if_missing('users', 'organization_id', 'INT UNSIGNED NULL');
 CALL add_column_if_missing('users', 'organization_hospital', 'VARCHAR(150) NULL');
 CALL add_column_if_missing('users', 'organization_code', 'VARCHAR(100) NULL');
 CALL add_column_if_missing('users', 'request_accepted', 'TINYINT(1) NOT NULL DEFAULT 0');

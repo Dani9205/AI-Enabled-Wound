@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const sequelize = require('../config/db');
 const User = require('../models/userModel');
 const { sendEmailCode } = require('../utils/mailer');
 const { resolveOrganization } = require('../utils/organizationResolver');
@@ -45,6 +46,7 @@ const getCookie = (req, name) => {
 
 const publicDoctor = (user) => ({
   id: user.id,
+  organization_id: user.organization_id,
   name: user.name,
   first_name: user.first_name,
   last_name: user.last_name,
@@ -189,9 +191,11 @@ const getPersonalInfo = (body) => ({
 });
 
 const getProfessionalInfo = (body) => ({
+  organizationId: body.organization_id || body.organizationId || null,
   organizationHospital: normalizeText(
     body.organization_hospital ||
       body.organizationHospital ||
+      body.hospital_organization ||
       body.hospital ||
       body.hospital_institution ||
       body.hospitalInstitution
@@ -325,12 +329,27 @@ const submitProfessionalCredentials = async (req, res) => {
       return res.status(400).json({ message: validationError });
     }
 
+    const organization = await resolveOrganization({
+      organizationId: professionalInfo.organizationId,
+      organizationCode: professionalInfo.organizationCode,
+      organizationHospital: professionalInfo.organizationHospital,
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        message:
+          'Selected hospital/organization could not be found. Please check the organization code or hospital name and try again.',
+      });
+    }
+
     return res.status(200).json({
       message: 'Doctor professional credentials accepted',
       next_step: 'set-password',
       professional_details: {
-        hospital_organization: professionalInfo.organizationHospital,
-        organization_code: professionalInfo.organizationCode || null,
+        organization_id: organization.id,
+        hospital_organization: organization.name,
+        organization_hospital: organization.name,
+        organization_code: organization.code,
         doctor_license_number: professionalInfo.doctorLicenseNumber,
         specializations: professionalInfo.specializations,
         title_designation: professionalInfo.titleDesignation,
@@ -407,6 +426,7 @@ const setAccountPassword = async (req, res) => {
     }
 
     const organization = await resolveOrganization({
+      organizationId: professionalInfo.organizationId,
       organizationCode: professionalInfo.organizationCode,
       organizationHospital: professionalInfo.organizationHospital,
     });
@@ -441,26 +461,41 @@ const setAccountPassword = async (req, res) => {
       ],
     };
 
-    const user = await User.create({
-      name: `${personalInfo.firstName} ${personalInfo.lastName}`.trim(),
-      first_name: personalInfo.firstName,
-      last_name: personalInfo.lastName,
-      email: personalInfo.email,
-      phone_number: personalInfo.phoneNumber,
-      profile_photo_url: personalInfo.profilePhotoUrl || null,
-      organization_id: organization.id,
-      organization_hospital: organization.name,
-      organization_code: organization.code,
-      professional_title: professionalInfo.titleDesignation,
-      role: DOCTOR_ROLE,
-      password_hash: hashPassword(password),
-      request_accepted: false,
-      request_status: 'pending',
-      terms_accepted: true,
-      terms_accepted_at: new Date(),
-      app_settings: {
-        doctor_profile: doctorProfile,
-      },
+    const user = await sequelize.transaction(async (transaction) => {
+      const createdUser = await User.create(
+        {
+          name: `${personalInfo.firstName} ${personalInfo.lastName}`.trim(),
+          first_name: personalInfo.firstName,
+          last_name: personalInfo.lastName,
+          email: personalInfo.email,
+          phone_number: personalInfo.phoneNumber,
+          profile_photo_url: personalInfo.profilePhotoUrl || null,
+          organization_id: organization.id,
+          organization_hospital: organization.name,
+          organization_code: organization.code,
+          professional_title: professionalInfo.titleDesignation,
+          role: DOCTOR_ROLE,
+          password_hash: hashPassword(password),
+          request_accepted: false,
+          request_status: 'pending',
+          terms_accepted: true,
+          terms_accepted_at: new Date(),
+          app_settings: {
+            doctor_profile: doctorProfile,
+          },
+        },
+        { transaction }
+      );
+
+      // Read the persisted value back from MySQL so a doctor can never be
+      // created successfully with a silently missing organization link.
+      await createdUser.reload({ transaction });
+
+      if (Number(createdUser.organization_id) !== Number(organization.id)) {
+        throw new Error('Doctor organization ID was not persisted');
+      }
+
+      return createdUser;
     });
 
     return res.status(201).json({
