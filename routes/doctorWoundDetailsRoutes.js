@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   generateReport,
+  getHealingProgress,
   getImages,
   getMeasurements,
   getNotes,
@@ -13,6 +14,7 @@ const router = express.Router();
 
 router.get('/:woundCaseId/images', getImages);
 router.get('/:woundCaseId/measurements', getMeasurements);
+router.post('/:woundCaseId/healing-progress', getHealingProgress);
 router.get('/:woundCaseId/notes', getNotes);
 router.get('/:woundCaseId/reports', getReports);
 router.post('/:woundCaseId/reports/generate', generateReport);

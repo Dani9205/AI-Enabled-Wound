@@ -128,6 +128,134 @@ const formatMeasurement = (measurement, index) => ({
   notes: measurement.notes || null,
 });
 
+const round = (value, precision = 2) => {
+  const factor = 10 ** precision;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+};
+
+const getMeasurementDimensions = (value = {}) => ({
+  length_cm: parseNumber(value.length_cm ?? value.lengthCm),
+  width_cm: parseNumber(value.width_cm ?? value.widthCm),
+  depth_cm: parseNumber(value.depth_cm ?? value.depthCm),
+});
+
+const validateVolumeDimensions = (dimensions, label) => {
+  const invalidField = ['length_cm', 'width_cm', 'depth_cm'].find(
+    (field) =>
+      !Number.isFinite(dimensions[field]) || dimensions[field] <= 0
+  );
+
+  return invalidField
+    ? `${label}.${invalidField} must be a number greater than 0`
+    : null;
+};
+
+const measurementVolume = (dimensions) =>
+  round(dimensions.length_cm * dimensions.width_cm * dimensions.depth_cm, 4);
+
+const healingPercentage = (originalVolume, comparisonVolume) =>
+  round(((originalVolume - comparisonVolume) / originalVolume) * 100);
+
+const getHealingProgress = async (req, res) => {
+  try {
+    const { woundCase, patient, error } = await getWoundCaseWithPatient(
+      req.params.woundCaseId
+    );
+
+    if (error) return res.status(404).json({ message: error });
+
+    const originalInput =
+      req.body.original_measurements || req.body.originalMeasurements || req.body;
+    const original = getMeasurementDimensions(originalInput);
+    const originalError = validateVolumeDimensions(original, 'original_measurements');
+
+    if (originalError) {
+      return res.status(400).json({ message: originalError });
+    }
+
+    const history = asArray(woundCase.measurements).map(formatMeasurement);
+    const latestRecord = history[history.length - 1] || {
+      length_cm: woundCase.length_cm,
+      width_cm: woundCase.width_cm,
+      depth_cm: woundCase.depth_cm,
+      date: woundCase.last_updated_at || woundCase.updatedAt,
+    };
+    const latest = getMeasurementDimensions(latestRecord);
+    const latestError = validateVolumeDimensions(latest, 'latest_measurement');
+
+    if (latestError) {
+      return res.status(422).json({
+        message: 'Latest wound measurement is incomplete',
+        error: latestError,
+      });
+    }
+
+    const previousRecord = history.length > 1 ? history[history.length - 2] : null;
+    const previous = previousRecord
+      ? getMeasurementDimensions(previousRecord)
+      : original;
+    const previousError = validateVolumeDimensions(previous, 'previous_measurement');
+
+    if (previousError) {
+      return res.status(422).json({
+        message: 'Previous wound measurement is incomplete',
+        error: previousError,
+      });
+    }
+
+    const originalVolume = measurementVolume(original);
+    const previousVolume = measurementVolume(previous);
+    const latestVolume = measurementVolume(latest);
+    const previousHealing = healingPercentage(originalVolume, previousVolume);
+    const currentHealing = healingPercentage(originalVolume, latestVolume);
+    const healingChange = round(currentHealing - previousHealing);
+    const direction =
+      healingChange > 0 ? 'increased' : healingChange < 0 ? 'decreased' : 'stable';
+    const status =
+      currentHealing > 0
+        ? 'healing'
+        : currentHealing < 0
+          ? 'deteriorating'
+          : 'baseline';
+
+    return res.status(200).json({
+      message: 'Wound healing progress calculated successfully',
+      wound_case: formatWoundHeader(woundCase, patient),
+      calculation_method:
+        'volume = length_cm × width_cm × depth_cm; healing % = ((original volume - latest volume) / original volume) × 100',
+      original_measurement: {
+        ...original,
+        volume_cm3: originalVolume,
+        healing_percentage: 0,
+      },
+      previous_measurement: {
+        ...previous,
+        volume_cm3: previousVolume,
+        healing_percentage: previousHealing,
+        measured_at: previousRecord?.date || null,
+      },
+      latest_measurement: {
+        ...latest,
+        volume_cm3: latestVolume,
+        healing_percentage: currentHealing,
+        measured_at: latestRecord.date || null,
+      },
+      healing_progress: {
+        percentage: currentHealing,
+        status,
+        direction_since_previous: direction,
+        change_since_previous_percentage_points: healingChange,
+        volume_change_from_original_cm3: round(latestVolume - originalVolume, 4),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Wound healing progress calculation failed',
+      error: error.message,
+    });
+  }
+};
+
 const diff = (current, previous) => {
   const currentNumber = parseNumber(current);
   const previousNumber = parseNumber(previous);
@@ -436,6 +564,7 @@ const shareReport = async (req, res) => {
 
 module.exports = {
   generateReport,
+  getHealingProgress,
   getImages,
   getMeasurements,
   getNotes,
