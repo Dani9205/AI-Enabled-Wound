@@ -518,15 +518,25 @@ const updateInstructions = async (req, res) => {
       return res.status(400).json({ message: validationError });
     }
 
-    notes[index] = updatedInstruction;
-    await woundCase.update({
-      clinical_notes: notes,
-      last_updated_at: new Date(),
-    });
+    const nextNotes = notes.map((note, noteIndex) =>
+      noteIndex === index ? updatedInstruction : note
+    );
+
+    woundCase.setDataValue('clinical_notes', nextNotes);
+    woundCase.changed('clinical_notes', true);
+    woundCase.last_updated_at = new Date();
+    await woundCase.save({ fields: ['clinical_notes', 'last_updated_at'] });
+
+    await woundCase.reload({ attributes: ['clinical_notes'] });
+    const persistedInstruction = asArray(woundCase.clinical_notes).find(
+      (note) =>
+        note.note_type === 'doctor_instruction' &&
+        String(note.id) === String(req.params.instructionId)
+    );
 
     return res.status(200).json({
       message: 'Doctor instructions updated successfully',
-      instruction: formatInstruction(updatedInstruction),
+      instruction: formatInstruction(persistedInstruction || updatedInstruction),
     });
   } catch (error) {
     return res.status(500).json({
