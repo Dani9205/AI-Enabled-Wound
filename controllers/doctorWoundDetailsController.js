@@ -134,27 +134,95 @@ const round = (value, precision = 2) => {
 };
 
 const getMeasurementDimensions = (value = {}) => ({
-  length_cm: parseNumber(value.length_cm ?? value.lengthCm),
-  width_cm: parseNumber(value.width_cm ?? value.widthCm),
-  depth_cm: parseNumber(value.depth_cm ?? value.depthCm),
+  length_cm: parseNumber(value.length_cm ?? value.lengthCm ?? value.length),
+  width_cm: parseNumber(value.width_cm ?? value.widthCm ?? value.width),
+  depth_cm: parseNumber(value.depth_cm ?? value.depthCm ?? value.depth),
 });
 
-const validateVolumeDimensions = (dimensions, label) => {
+const getPrefixedMeasurement = (body, prefix) => ({
+  length_cm:
+    body[`${prefix}_length_cm`] ??
+    body[`${prefix}LengthCm`] ??
+    body[`${prefix}_length`] ??
+    body[`${prefix}Length`],
+  width_cm:
+    body[`${prefix}_width_cm`] ??
+    body[`${prefix}WidthCm`] ??
+    body[`${prefix}_width`] ??
+    body[`${prefix}Width`],
+  depth_cm:
+    body[`${prefix}_depth_cm`] ??
+    body[`${prefix}DepthCm`] ??
+    body[`${prefix}_depth`] ??
+    body[`${prefix}Depth`],
+});
+
+const hasAnyMeasurementValue = (value = {}) =>
+  ['length_cm', 'lengthCm', 'length', 'width_cm', 'widthCm', 'width', 'depth_cm', 'depthCm', 'depth'].some(
+    (field) => value[field] !== undefined && value[field] !== null && value[field] !== ''
+  );
+
+const validateMeasurementDimensions = (
+  dimensions,
+  label,
+  { allowZero = false } = {}
+) => {
   const invalidField = ['length_cm', 'width_cm', 'depth_cm'].find(
     (field) =>
-      !Number.isFinite(dimensions[field]) || dimensions[field] <= 0
+      !Number.isFinite(dimensions[field]) ||
+      (allowZero ? dimensions[field] < 0 : dimensions[field] <= 0)
   );
 
   return invalidField
-    ? `${label}.${invalidField} must be a number greater than 0`
+    ? `${label}.${invalidField} must be a number ${
+        allowZero ? 'greater than or equal to 0' : 'greater than 0'
+      }`
     : null;
 };
 
 const measurementVolume = (dimensions) =>
   round(dimensions.length_cm * dimensions.width_cm * dimensions.depth_cm, 4);
 
-const healingPercentage = (originalVolume, comparisonVolume) =>
-  round(((originalVolume - comparisonVolume) / originalVolume) * 100);
+const hasValidMeasurementDimensions = (dimensions, { allowZero = false } = {}) =>
+  ['length_cm', 'width_cm', 'depth_cm'].every(
+    (field) =>
+      Number.isFinite(dimensions[field]) &&
+      (allowZero ? dimensions[field] >= 0 : dimensions[field] > 0)
+  );
+
+const calculateDimensionHealing = (original, comparison) => {
+  const fields = ['length_cm', 'width_cm', 'depth_cm'];
+  const rawReductions = fields.map(
+    (field) => ((original[field] - comparison[field]) / original[field]) * 100
+  );
+  const reductions = Object.fromEntries(
+    fields.map((field, index) => [
+      field.replace('_cm', '_reduction_percentage'),
+      round(rawReductions[index]),
+    ])
+  );
+  const averageReduction =
+    rawReductions.reduce((sum, value) => sum + value, 0) /
+    fields.length;
+  let percentage = Math.round(averageReduction);
+
+  percentage = Math.max(0, Math.min(100, percentage));
+
+  if (fields.some((field) => comparison[field] > 0)) {
+    percentage = Math.min(99, percentage);
+  }
+
+  return {
+    percentage,
+    reductions,
+    average_reduction_before_rounding: round(averageReduction),
+  };
+};
+
+const sameDimensions = (first, second) =>
+  ['length_cm', 'width_cm', 'depth_cm'].every(
+    (field) => Number(first[field]) === Number(second[field])
+  );
 
 const getHealingProgress = async (req, res) => {
   try {
@@ -164,24 +232,55 @@ const getHealingProgress = async (req, res) => {
 
     if (error) return res.status(404).json({ message: error });
 
+    const prefixedOriginal = getPrefixedMeasurement(req.body, 'original');
     const originalInput =
-      req.body.original_measurements || req.body.originalMeasurements || req.body;
+      req.body.original_measurements ||
+      req.body.originalMeasurements ||
+      req.body.original_measurement ||
+      req.body.originalMeasurement ||
+      (hasAnyMeasurementValue(prefixedOriginal) ? prefixedOriginal : req.body);
     const original = getMeasurementDimensions(originalInput);
-    const originalError = validateVolumeDimensions(original, 'original_measurements');
+    const originalError = validateMeasurementDimensions(
+      original,
+      'original_measurements'
+    );
 
     if (originalError) {
       return res.status(400).json({ message: originalError });
     }
 
     const history = asArray(woundCase.measurements).map(formatMeasurement);
-    const latestRecord = history[history.length - 1] || {
+    const prefixedLatest = getPrefixedMeasurement(req.body, 'latest');
+    const requestLatestMeasurement =
+      req.body.latest_measurements ||
+      req.body.latestMeasurements ||
+      req.body.latest_measurement ||
+      req.body.latestMeasurement ||
+      (hasAnyMeasurementValue(prefixedLatest) ? prefixedLatest : null);
+    const currentWoundMeasurement = {
       length_cm: woundCase.length_cm,
       width_cm: woundCase.width_cm,
       depth_cm: woundCase.depth_cm,
       date: woundCase.last_updated_at || woundCase.updatedAt,
     };
+    const historyLatestRecord = history[history.length - 1] || null;
+    const currentDimensions = getMeasurementDimensions(currentWoundMeasurement);
+    const historyLatestDimensions = getMeasurementDimensions(historyLatestRecord || {});
+    const usesRequestLatestMeasurement = Boolean(requestLatestMeasurement);
+    const usesCurrentWoundMeasurement =
+      !usesRequestLatestMeasurement &&
+      hasValidMeasurementDimensions(currentDimensions, { allowZero: true });
+    const latestRecord = usesRequestLatestMeasurement
+      ? requestLatestMeasurement
+      : usesCurrentWoundMeasurement
+        ? currentWoundMeasurement
+        : historyLatestRecord || {};
     const latest = getMeasurementDimensions(latestRecord);
-    const latestError = validateVolumeDimensions(latest, 'latest_measurement');
+    const latestError = validateMeasurementDimensions(
+      latest,
+      'latest_measurement',
+      { allowZero: true }
+    );
 
     if (latestError) {
       return res.status(422).json({
@@ -190,11 +289,23 @@ const getHealingProgress = async (req, res) => {
       });
     }
 
-    const previousRecord = history.length > 1 ? history[history.length - 2] : null;
+    const historyLatestMatchesCurrent =
+      historyLatestRecord &&
+      hasValidMeasurementDimensions(historyLatestDimensions, { allowZero: true }) &&
+      sameDimensions(historyLatestDimensions, latest);
+    const previousRecord = historyLatestMatchesCurrent
+      ? history.length > 1
+        ? history[history.length - 2]
+        : null
+      : historyLatestRecord;
     const previous = previousRecord
       ? getMeasurementDimensions(previousRecord)
       : original;
-    const previousError = validateVolumeDimensions(previous, 'previous_measurement');
+    const previousError = validateMeasurementDimensions(
+      previous,
+      'previous_measurement',
+      { allowZero: true }
+    );
 
     if (previousError) {
       return res.status(422).json({
@@ -206,23 +317,23 @@ const getHealingProgress = async (req, res) => {
     const originalVolume = measurementVolume(original);
     const previousVolume = measurementVolume(previous);
     const latestVolume = measurementVolume(latest);
-    const previousHealing = healingPercentage(originalVolume, previousVolume);
-    const currentHealing = healingPercentage(originalVolume, latestVolume);
-    const healingChange = round(currentHealing - previousHealing);
+    const previousHealing = calculateDimensionHealing(original, previous);
+    const currentHealing = calculateDimensionHealing(original, latest);
+    const healingChange = currentHealing.percentage - previousHealing.percentage;
     const direction =
       healingChange > 0 ? 'increased' : healingChange < 0 ? 'decreased' : 'stable';
     const status =
-      currentHealing > 0
+      currentHealing.percentage === 100
+        ? 'healed'
+        : currentHealing.percentage > 0
         ? 'healing'
-        : currentHealing < 0
-          ? 'deteriorating'
-          : 'baseline';
+        : 'baseline';
 
     return res.status(200).json({
       message: 'Wound healing progress calculated successfully',
       wound_case: formatWoundHeader(woundCase, patient),
       calculation_method:
-        'volume = length_cm × width_cm × depth_cm; healing % = ((original volume - latest volume) / original volume) × 100',
+        'healing % = round((length reduction % + width reduction % + depth reduction %) / 3), clamped to 0-100; capped at 99 while any latest dimension is above 0',
       original_measurement: {
         ...original,
         volume_cm3: originalVolume,
@@ -231,20 +342,29 @@ const getHealingProgress = async (req, res) => {
       previous_measurement: {
         ...previous,
         volume_cm3: previousVolume,
-        healing_percentage: previousHealing,
+        healing_percentage: previousHealing.percentage,
+        dimension_reductions: previousHealing.reductions,
         measured_at: previousRecord?.date || null,
       },
       latest_measurement: {
         ...latest,
         volume_cm3: latestVolume,
-        healing_percentage: currentHealing,
+        healing_percentage: currentHealing.percentage,
+        dimension_reductions: currentHealing.reductions,
         measured_at: latestRecord.date || null,
+        source: usesRequestLatestMeasurement
+          ? 'request_latest_measurement'
+          : usesCurrentWoundMeasurement
+            ? 'wound_case_current_measurement'
+            : 'measurement_history',
       },
       healing_progress: {
-        percentage: currentHealing,
+        percentage: currentHealing.percentage,
         status,
         direction_since_previous: direction,
         change_since_previous_percentage_points: healingChange,
+        average_reduction_before_rounding:
+          currentHealing.average_reduction_before_rounding,
         volume_change_from_original_cm3: round(latestVolume - originalVolume, 4),
       },
     });
