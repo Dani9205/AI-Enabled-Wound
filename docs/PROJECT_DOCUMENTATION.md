@@ -420,6 +420,8 @@ Routes are mounted in `app.js`.
 
 ### Doctor Auth: `/api/doctor/auth`
 
+Detailed requests, responses, validations, and frontend flows: [Doctor Authentication APIs](DOCTOR_AUTH_APIS.md).
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/signup/personal-information` | Submit doctor personal info. |
