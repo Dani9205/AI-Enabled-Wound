@@ -6,7 +6,7 @@ with `note_type: "doctor_instruction"`.
 ## Base URL
 
 ```text
-http://localhost:3000/api/doctor
+https://aiwound.appistan.app/api/doctor
 ```
 
 Recommended Postman variables:
@@ -247,6 +247,154 @@ No request body is required.
 - `404`: `Wound case not found`
 - `404`: `Doctor instruction not found`
 - `500`: `Doctor instructions delete failed`
+
+## 5. Calculate Wound Healing Progress
+
+Calculates healing progress by comparing the original wound dimensions with the
+latest dimensions. It calculates the percentage reduction of length, width, and
+depth separately, then returns their rounded average.
+
+```http
+POST /api/doctor/wound-details/:woundCaseId/healing-progress
+```
+
+### Path parameters
+
+| Parameter | Required | Description |
+| --- | --- | --- |
+| `woundCaseId` | Yes | Existing wound case whose progress is being measured. |
+
+### Recommended request body
+
+Send both original and latest measurements when the frontend already has both
+measurement sets:
+
+```json
+{
+  "original_measurements": {
+    "length_cm": 9,
+    "width_cm": 9,
+    "depth_cm": 9
+  },
+  "latest_measurements": {
+    "length_cm": 9,
+    "width_cm": 9,
+    "depth_cm": 9
+  }
+}
+```
+
+If `latest_measurements` is omitted, the API uses the current dimensions stored
+on the wound case. If those are incomplete, it falls back to the latest item in
+the wound-case measurement history.
+
+```json
+{
+  "original_measurements": {
+    "length_cm": 9,
+    "width_cm": 9,
+    "depth_cm": 9
+  }
+}
+```
+
+Accepted nested aliases include `originalMeasurements`, `originalMeasurement`,
+`latestMeasurements`, and `latestMeasurement`. Dimension fields can use
+`length_cm`, `lengthCm`, or `length`, with equivalent aliases for width and depth.
+
+### Calculation
+
+```text
+Length reduction = ((original length - latest length) / original length) * 100
+Width reduction  = ((original width  - latest width)  / original width)  * 100
+Depth reduction  = ((original depth  - latest depth)  / original depth)  * 100
+
+Healing progress = round(
+  (length reduction + width reduction + depth reduction) / 3
+)
+```
+
+Calculation rules:
+
+- Every original dimension must be a number greater than `0`.
+- Every latest dimension must be a number greater than or equal to `0`.
+- The final percentage is limited to the range `0–100`.
+- A negative average, caused by wound growth, is returned as `0%`.
+- If any latest dimension remains above `0`, progress is limited to `99%`.
+- Progress reaches `100%` only when all three latest dimensions are `0`.
+- The API compares current progress with the previous stored measurement and
+  returns `increased`, `decreased`, or `stable`.
+
+### Example: unchanged wound
+
+```text
+Original = 9 × 9 × 9
+Latest   = 9 × 9 × 9
+
+Length reduction = 0%
+Width reduction  = 0%
+Depth reduction  = 0%
+Healing progress = 0%
+```
+
+### Success response — `200 OK`
+
+```json
+{
+  "message": "Wound healing progress calculated successfully",
+  "calculation_method": "healing % = round((length reduction % + width reduction % + depth reduction %) / 3), clamped to 0-100; capped at 99 while any latest dimension is above 0",
+  "original_measurement": {
+    "length_cm": 9,
+    "width_cm": 9,
+    "depth_cm": 9,
+    "volume_cm3": 729,
+    "healing_percentage": 0
+  },
+  "latest_measurement": {
+    "length_cm": 9,
+    "width_cm": 9,
+    "depth_cm": 9,
+    "volume_cm3": 729,
+    "healing_percentage": 0,
+    "dimension_reductions": {
+      "length_reduction_percentage": 0,
+      "width_reduction_percentage": 0,
+      "depth_reduction_percentage": 0
+    },
+    "source": "request_latest_measurement"
+  },
+  "healing_progress": {
+    "percentage": 0,
+    "status": "baseline",
+    "direction_since_previous": "stable",
+    "change_since_previous_percentage_points": 0,
+    "average_reduction_before_rounding": 0,
+    "volume_change_from_original_cm3": 0
+  }
+}
+```
+
+The `latest_measurement.source` value explains where the latest dimensions came
+from:
+
+- `request_latest_measurement`: supplied explicitly in the request.
+- `wound_case_current_measurement`: read from the current wound-case columns.
+- `measurement_history`: fallback to the latest stored measurement-history item.
+
+Possible healing statuses:
+
+- `baseline`: calculated progress is `0%`.
+- `healing`: calculated progress is between `1%` and `99%`.
+- `healed`: calculated progress is `100%`.
+
+### Error responses
+
+- `400`: An original dimension is missing, zero, negative, or invalid.
+- `404`: `Wound case not found`
+- `404`: `Patient not found`
+- `422`: `Latest wound measurement is incomplete`
+- `422`: `Previous wound measurement is incomplete`
+- `500`: `Wound healing progress calculation failed`
 
 ## Postman test sequence
 
