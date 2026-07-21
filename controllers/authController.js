@@ -521,6 +521,20 @@ const signin = async (req, res) => {
       });
     }
 
+    if (user.request_status !== 'accepted') {
+      const message =
+        user.request_status === 'pending'
+          ? 'Your account request is pending admin approval'
+          : user.request_status === 'suspended'
+            ? 'Your account request has been suspended'
+            : 'Your account request has not been accepted by an admin';
+
+      return res.status(403).json({
+        message,
+        request_status: user.request_status,
+      });
+    }
+
     if (['deactivated', 'deleted'].includes(user.account_status)) {
       return res.status(403).json({
         message: 'User account is not active',
