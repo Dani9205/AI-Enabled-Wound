@@ -140,7 +140,13 @@ const createPatient = async (req, res) => {
 
 const getPatients = async (req, res) => {
   try {
-    const where = { doctor_id: req.user.id };
+    const doctorId = Number(req.user?.id);
+
+    if (!Number.isInteger(doctorId) || doctorId <= 0) {
+      return res.status(401).json({ message: 'Authenticated doctor is required' });
+    }
+
+    const where = { doctor_id: doctorId };
     const search = cleanString(req.query.search);
     const nurseId = parsePositiveId(req.query.nurse_id || req.query.nurseId);
     if (Number.isNaN(nurseId)) {
