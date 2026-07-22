@@ -33,6 +33,7 @@ const doctorProfileSettingsRoutes = require('./routes/doctorProfileSettingsRoute
 const doctorTaskRoutes = require('./routes/doctorTaskRoutes');
 const doctorWoundDetailsRoutes = require('./routes/doctorWoundDetailsRoutes');
 const doctorPatientRoutes = require('./routes/doctorPatientRoutes');
+const doctorWoundCaseRoutes = require('./routes/doctorWoundCaseRoutes');
 
 const app = express();
 app.use(express.json());
@@ -65,6 +66,7 @@ app.use('/api/doctor/patient-handoff', doctorPatientHandoffRoutes);
 app.use('/api/doctor/profile-settings', doctorProfileSettingsRoutes);
 app.use('/api/doctor/tasks', doctorTaskRoutes);
 app.use('/api/doctor/patients', doctorPatientRoutes);
+app.use('/api/doctor/wound-cases', doctorWoundCaseRoutes);
 app.use('/api/doctor', doctorManagementRoutes);
 app.use('/api/doctor/wound-details', doctorWoundDetailsRoutes);
 
