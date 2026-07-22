@@ -146,26 +146,33 @@ const getPatients = async (req, res) => {
       return res.status(401).json({ message: 'Authenticated doctor is required' });
     }
 
-    const where = { doctor_id: doctorId };
+    const where = {
+      [Op.and]: [
+        { doctor_id: { [Op.eq]: doctorId } },
+        { doctor_id: { [Op.not]: null } },
+      ],
+    };
     const search = cleanString(req.query.search);
     const nurseId = parsePositiveId(req.query.nurse_id || req.query.nurseId);
     if (Number.isNaN(nurseId)) {
       return res.status(400).json({ message: 'nurse_id must be a valid positive id' });
     }
-    if (nurseId) where.nurse_id = nurseId;
+    if (nurseId) where[Op.and].push({ nurse_id: nurseId });
     const status = cleanString(req.query.status)?.toLowerCase() || 'active';
     if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({
         message: `Status must be one of: ${VALID_STATUSES.join(', ')}`,
       });
     }
-    where.status = status;
+    where[Op.and].push({ status });
     if (search) {
-      where[Op.or] = [
-        { first_name: { [Op.like]: `%${search}%` } },
-        { last_name: { [Op.like]: `%${search}%` } },
-        { mrn: { [Op.like]: `%${search}%` } },
-      ];
+      where[Op.and].push({
+        [Op.or]: [
+          { first_name: { [Op.like]: `%${search}%` } },
+          { last_name: { [Op.like]: `%${search}%` } },
+          { mrn: { [Op.like]: `%${search}%` } },
+        ],
+      });
     }
 
     const patients = await Patient.findAll({ where, order: [['createdAt', 'DESC']] });
@@ -181,8 +188,25 @@ const getPatients = async (req, res) => {
 
 const getPatient = async (req, res) => {
   try {
+    const doctorId = Number(req.user?.id);
+    const patientId = Number(req.params.patientId);
+
+    if (!Number.isInteger(doctorId) || doctorId <= 0) {
+      return res.status(401).json({ message: 'Authenticated doctor is required' });
+    }
+
+    if (!Number.isInteger(patientId) || patientId <= 0) {
+      return res.status(400).json({ message: 'Valid patient id is required' });
+    }
+
     const patient = await Patient.findOne({
-      where: { id: req.params.patientId, doctor_id: req.user.id },
+      where: {
+        [Op.and]: [
+          { id: { [Op.eq]: patientId } },
+          { doctor_id: { [Op.eq]: doctorId } },
+          { doctor_id: { [Op.not]: null } },
+        ],
+      },
     });
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
     return res.status(200).json({ patient: patientResponse(patient) });
