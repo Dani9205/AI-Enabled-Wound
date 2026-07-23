@@ -138,6 +138,10 @@ const createPatient = async (req, res) => {
   }
 };
 
+
+
+
+
 const getPatients = async (req, res) => {
   try {
     const doctorId = Number(req.user?.id);
@@ -185,6 +189,13 @@ const getPatients = async (req, res) => {
     return res.status(500).json({ message: 'Patients fetch failed', error: error.message });
   }
 };
+
+
+
+
+
+
+
 
 const getPatient = async (req, res) => {
   try {

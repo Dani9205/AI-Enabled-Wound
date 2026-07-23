@@ -12,7 +12,7 @@ const router = express.Router();
 
 router.use(authenticateToken, requireRoles('doctor'));
 router.post('/', createPatient);
-router.get('/', getPatients);
+router.get('/ss', getPatients);
 router.get('/:patientId', getPatient);
 router.put('/:patientId', updatePatient);
 router.patch('/:patientId', updatePatient);
