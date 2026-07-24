@@ -9,11 +9,12 @@ const {
   markTaskComplete,
   updateInstructions,
 } = require('../controllers/doctorManagementController');
+const { authenticateToken, requireRoles } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 router.get('/home', getHome);
-router.get('/patients', getPatients);
+router.get('/patients', authenticateToken, requireRoles('doctor'), getPatients);
 router.get('/patients/:patientId', getPatientDetails);
 router.get('/wound-cases/:woundCaseId', getWoundCaseDetails);
 router.post('/wound-cases/:woundCaseId/instructions', addInstructions);

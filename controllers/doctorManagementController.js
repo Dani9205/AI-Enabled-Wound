@@ -323,21 +323,35 @@ const getHome = async (req, res) => {
   }
 };
 
+
+
+
+
+
 const getPatients = async (req, res) => {
   try {
+    const doctorId = Number(req.user?.id);
+
+    if (!Number.isInteger(doctorId) || doctorId <= 0) {
+      return res.status(401).json({ message: 'Authenticated doctor is required' });
+    }
+
     const search = cleanString(req.query.search);
     const patients = await Patient.findAll({
-      where: search
-        ? {
-            [Op.or]: [
-              { first_name: { [Op.like]: `%${search}%` } },
-              { last_name: { [Op.like]: `%${search}%` } },
-              { room: { [Op.like]: `%${search}%` } },
-              { wound_type: { [Op.like]: `%${search}%` } },
-              { primary_diagnosis: { [Op.like]: `%${search}%` } },
-            ],
-          }
-        : {},
+      where: {
+        doctor_id: doctorId,
+        ...(search
+          ? {
+              [Op.or]: [
+                { first_name: { [Op.like]: `%${search}%` } },
+                { last_name: { [Op.like]: `%${search}%` } },
+                { room: { [Op.like]: `%${search}%` } },
+                { wound_type: { [Op.like]: `%${search}%` } },
+                { primary_diagnosis: { [Op.like]: `%${search}%` } },
+              ],
+            }
+          : {}),
+      },
       order: [['createdAt', 'DESC']],
     });
     const woundCases = await WoundCase.findAll({
@@ -350,6 +364,7 @@ const getPatients = async (req, res) => {
 
     return res.status(200).json({
       message: 'Doctor patients fetched successfully',
+       total_count: patients.length,
       patients: patients.map((patient) =>
         formatPatientCard(
           patient,
@@ -365,6 +380,12 @@ const getPatients = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
 
 const getPatientDetails = async (req, res) => {
   try {
