@@ -48,7 +48,10 @@ const getNurseScopedTask = async (req, id) => {
   const where = { id };
 
   if (isNurse(req)) {
-    where.assigned_by = req.user.id;
+    where[Op.or] = [
+      { assigned_by: req.user.id },
+      { assigned_to: req.user.id },
+    ];
   }
 
   return Task.findOne({ where });
@@ -294,17 +297,10 @@ const getTasks = async (req, res) => {
     }
 
     if (isNurse(req)) {
-      where.assigned_by = req.user.id;
-
-      if (where.patient_id) {
-        const patient = await Patient.findOne({
-          where: { id: where.patient_id, nurse_id: req.user.id },
-        });
-
-        if (!patient) {
-          return res.status(200).json({ tasks: [] });
-        }
-      }
+      where[Op.or] = [
+        { assigned_by: req.user.id },
+        { assigned_to: req.user.id },
+      ];
     }
 
     if (req.query.search) {
