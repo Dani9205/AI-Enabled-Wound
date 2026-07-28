@@ -265,6 +265,7 @@ const createAccount = async (req, res) => {
       profile_photo_url,
       role,
       password_hash: hashPassword(password),
+      request_status: 'pending',
       terms_accepted: true,
       terms_accepted_at: new Date(),
     });
