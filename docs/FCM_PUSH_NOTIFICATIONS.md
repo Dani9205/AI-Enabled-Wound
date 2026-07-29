@@ -26,22 +26,35 @@ are also present in `20260701_sync_app_tables.sql` for its idempotent sync flow.
 
 ## Mobile flow
 
-The mobile app obtains its FCM registration token and either includes it during
-sign-in or uploads/refreshed it using the authenticated endpoint.
+The mobile app obtains its FCM registration token and includes it during
+account signup. After signup, it can refresh the token using the authenticated
+endpoint.
 
-### Sign in and register token
+### Register token during signup
 
 ```http
-POST /api/auth/signin
+POST /api/auth/create-account
 Content-Type: application/json
 
 {
+  "first_name": "Ali",
+  "last_name": "Khan",
   "email": "doctor@example.com",
+  "phone_number": "+923001234567",
+  "role": "doctor",
   "password": "password123",
+  "confirm_password": "password123",
+  "terms_accepted": true,
   "fcm_token": "token-from-firebase-client-sdk",
   "fcm_platform": "android"
 }
 ```
+
+The same FCM fields are accepted by
+`POST /api/auth/create-organization-account`. They are optional, and
+`fcm_platform` supports `android`, `ios`, and `web`.
+
+Signin only requires `email` and `password`; it does not update FCM data.
 
 ### Refresh token
 

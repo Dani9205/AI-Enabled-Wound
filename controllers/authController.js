@@ -202,6 +202,10 @@ const createAccount = async (req, res) => {
     const confirm_password = req.body.confirm_password || req.body.confirmPassword;
     const terms_accepted = req.body.terms_accepted || req.body.termsAccepted;
     const profile_photo_url = getProfilePhotoUrl(req);
+    const fcmToken = String(req.body.fcm_token || req.body.fcmToken || '').trim();
+    const fcmPlatform = normalizeFcmPlatform(
+      req.body.fcm_platform || req.body.fcmPlatform
+    );
 
     if (
       !first_name ||
@@ -227,6 +231,12 @@ const createAccount = async (req, res) => {
     if (!ALLOWED_ROLES.includes(role)) {
       return res.status(400).json({
         message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
+      });
+    }
+
+    if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
+      return res.status(400).json({
+        message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
       });
     }
 
@@ -268,6 +278,9 @@ const createAccount = async (req, res) => {
       request_status: 'pending',
       terms_accepted: true,
       terms_accepted_at: new Date(),
+      fcm_token: fcmToken || null,
+      fcm_platform: fcmToken ? fcmPlatform : null,
+      fcm_token_updated_at: fcmToken ? new Date() : null,
     });
 
     await setVerificationCode(user, 'signup');
@@ -323,6 +336,10 @@ const createOrganizationAccount = async (req, res) => {
     const confirm_password = req.body.confirm_password || req.body.confirmPassword;
     const terms_accepted = req.body.terms_accepted || req.body.termsAccepted;
     const profile_photo_url = getProfilePhotoUrl(req);
+    const fcmToken = String(req.body.fcm_token || req.body.fcmToken || '').trim();
+    const fcmPlatform = normalizeFcmPlatform(
+      req.body.fcm_platform || req.body.fcmPlatform
+    );
 
     if (
       !first_name ||
@@ -350,6 +367,12 @@ const createOrganizationAccount = async (req, res) => {
     if (!ALLOWED_ROLES.includes(role)) {
       return res.status(400).json({
         message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
+      });
+    }
+
+    if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
+      return res.status(400).json({
+        message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
       });
     }
 
@@ -407,6 +430,9 @@ const createOrganizationAccount = async (req, res) => {
       request_status: 'pending',
       terms_accepted: true,
       terms_accepted_at: new Date(),
+      fcm_token: fcmToken || null,
+      fcm_platform: fcmToken ? fcmPlatform : null,
+      fcm_token_updated_at: fcmToken ? new Date() : null,
     });
 
     await setVerificationCode(user, 'signup');
@@ -431,6 +457,10 @@ const createOrganizationAccount = async (req, res) => {
     });
   }
 };
+
+
+
+
 
 const acceptOrganizationRequest = async (req, res) => {
   try {
@@ -492,20 +522,10 @@ const signin = async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const { password } = req.body;
-    const fcmToken = String(req.body.fcm_token || req.body.fcmToken || '').trim();
-    const fcmPlatform = normalizeFcmPlatform(
-      req.body.fcm_platform || req.body.fcmPlatform
-    );
 
     if (!email || !password) {
       return res.status(400).json({
         message: 'Email and password are required',
-      });
-    }
-
-    if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
-      return res.status(400).json({
-        message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
       });
     }
 
@@ -546,12 +566,6 @@ const signin = async (req, res) => {
     user.last_login_at = new Date();
     user.account_status = 'active';
 
-    if (fcmToken) {
-      user.fcm_token = fcmToken;
-      user.fcm_platform = fcmPlatform;
-      user.fcm_token_updated_at = new Date();
-    }
-
     await user.save();
 
     const token = signToken({
@@ -575,6 +589,10 @@ const signin = async (req, res) => {
     });
   }
 };
+
+
+
+
 
 const updateFcmToken = async (req, res) => {
   try {
@@ -611,6 +629,9 @@ const updateFcmToken = async (req, res) => {
     });
   }
 };
+
+
+
 
 const removeFcmToken = async (req, res) => {
   try {

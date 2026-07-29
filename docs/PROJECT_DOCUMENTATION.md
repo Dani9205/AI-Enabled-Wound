@@ -1,6 +1,6 @@
 # AI-Enabled Wound APIs - Project Documentation
 
-Last updated: 2026-07-10
+Last updated: 2026-07-29
 
 ## 1. Project Overview
 
@@ -78,6 +78,7 @@ Important folders:
 | `scripts/` | Utility scripts for admin/user/data maintenance and smoke testing. |
 | `postman/` | Postman collections and environments for API testing. |
 | `docs/API_REFERENCE.md` | Detailed API request/response reference. |
+| `docs/AUTH_SIGNUP_SIGNIN_API.md` | Detailed common signup, organization signup, signin, and FCM behavior. |
 
 ## 4. Application Entry Point
 
@@ -284,11 +285,11 @@ Routes are mounted in `app.js`.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/me` | Fetch current authenticated user from bearer token. |
-| `POST` | `/create-account` | Create user account. |
-| `POST` | `/create-organization-account` | Create organization account request. |
+| `POST` | `/create-account` | Create user account and optionally register its FCM token. |
+| `POST` | `/create-organization-account` | Create organization account request and optionally register its FCM token. |
 | `POST` | `/upload-image` | Authenticated profile image upload; updates current user's `profile_photo_url`. |
 | `PUT` | `/accept-organization-request` | Accept an organization account request. |
-| `POST` | `/signin` | Sign in user. |
+| `POST` | `/signin` | Sign in user using email/password; does not update FCM data. |
 | `POST` | `/verify-code` | Verify signup/signin code. |
 | `POST` | `/forgot-password` | Send password reset code. |
 | `POST` | `/reset-password` | Reset password. |
