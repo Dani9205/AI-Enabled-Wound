@@ -25,6 +25,22 @@ const Patient = sequelize.define(
         key: 'id',
       },
     },
+    assigned_by: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id',
+      },
+    },
+    assigned_to: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id',
+      },
+    },
     first_name: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -102,6 +118,8 @@ const Patient = sequelize.define(
     indexes: [
       { fields: ['nurse_id'] },
       { fields: ['doctor_id'] },
+      { fields: ['assigned_by'] },
+      { fields: ['assigned_to'] },
       { fields: ['mrn'], unique: true },
       { fields: ['status'] },
     ],

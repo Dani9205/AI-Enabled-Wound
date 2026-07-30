@@ -21,6 +21,9 @@ const normalizeGender = (gender) => {
 const patientResponse = (patient) => ({
   id: patient.id,
   nurse_id: patient.nurse_id,
+  doctor_id: patient.doctor_id,
+  assigned_by: patient.assigned_by,
+  assigned_to: patient.assigned_to,
   first_name: patient.first_name,
   last_name: patient.last_name,
   date_of_birth: patient.date_of_birth,
@@ -143,6 +146,8 @@ const createPatient = async (req, res) => {
     const payload = buildPatientPayload(req.body);
     if (isNurse(req)) {
       payload.nurse_id = req.user.id;
+      payload.assigned_by = req.user.id;
+      payload.assigned_to = req.user.id;
     }
 
     const validationError = validatePatientPayload(payload);
@@ -285,6 +290,64 @@ const updatePatient = async (req, res) => {
 
 
 
+const reassignPatient = async (req, res) => {
+  try {
+    const assignedTo = Number(req.body.assigned_to ?? req.body.assignedTo);
+
+    if (!Number.isInteger(assignedTo) || assignedTo <= 0) {
+      return res.status(400).json({ message: 'assigned_to is required' });
+    }
+
+    const patient = await getNurseScopedPatient(req, req.params.id);
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found' });
+    }
+
+    const assignee = await User.findByPk(assignedTo);
+    if (!assignee || !['nurse', 'doctor'].includes(assignee.role)) {
+      return res.status(404).json({
+        message: 'Assigned user must be a nurse or doctor',
+      });
+    }
+
+    if (
+      req.user.organization_id &&
+      assignee.organization_id &&
+      Number(req.user.organization_id) !== Number(assignee.organization_id)
+    ) {
+      return res.status(400).json({
+        message: 'Assigned user must belong to the same organization',
+      });
+    }
+
+    const assignment =
+      assignee.role === 'nurse'
+        ? { nurse_id: assignee.id, assigned_to: assignee.id }
+        : { doctor_id: assignee.id, assigned_to: assignee.id };
+
+    await patient.update(assignment);
+
+    return res.status(200).json({
+      message: 'Patient reassigned successfully',
+      assigned_to: {
+        id: assignee.id,
+        role: assignee.role,
+        name: assignee.name,
+      },
+      patient: patientResponse(patient),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Patient reassignment failed',
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
 
 
 
@@ -317,6 +380,7 @@ const deletePatient = async (req, res) => {
 module.exports = {
   createPatient,
   getPatients,
+  reassignPatient,
   updatePatient,
   deletePatient,
 };

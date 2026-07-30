@@ -3,6 +3,7 @@ const {
   createPatient,
   getPatients,
   getPatient,
+  reassignPatient,
   updatePatient,
   deletePatient,
 } = require('../controllers/doctorPatientController');
@@ -16,6 +17,7 @@ router.get('/ss', getPatients);
 router.get('/:patientId', getPatient);
 router.put('/:patientId', updatePatient);
 router.patch('/:patientId', updatePatient);
+router.patch('/:patientId/reassign', reassignPatient);
 router.delete('/:patientId', deletePatient);
 
 module.exports = router;

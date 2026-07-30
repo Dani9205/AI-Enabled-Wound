@@ -257,7 +257,7 @@ Routes are mounted in `app.js`.
 | Prefix | Route File | Main Purpose |
 | --- | --- | --- |
 | `/api/auth` | `routes/authRoutes.js` | Common/nurse auth and role management. |
-| `/api/patients` | `routes/patientRoutes.js` | Nurse patient CRUD. |
+| `/api/patients` | `routes/patientRoutes.js` | Nurse patient CRUD and reassignment. |
 | `/api/tasks` | `routes/taskRoutes.js` | Nurse/common task CRUD and assignment. |
 | `/api/wound-cases` | `routes/woundCaseRoutes.js` | Wound case CRUD, images, measurements, notes, reports. |
 | `/api/dashboard` | `routes/dashboardRoutes.js` | Nurse dashboard stats and lists. |
@@ -267,6 +267,7 @@ Routes are mounted in `app.js`.
 | `/api/subscriptions` | `routes/subscriptionRoutes.js` | Plans, checkout, subscribe, StoreKit verify/restore, usage, cancel. |
 | `/api/admin` | `routes/adminRoutes.js` | Admin login. |
 | `/api/doctor/auth` | `routes/doctorAuthRoutes.js` | Doctor signup/signin/password reset. |
+| `/api/doctor/patients` | `routes/doctorPatientRoutes.js` | Authenticated doctor patient CRUD and reassignment. |
 | `/api/doctor` | `routes/doctorManagementRoutes.js` | Doctor home, patients, wound cases, instructions. |
 | `/api/doctor/tasks` | `routes/doctorTaskRoutes.js` | Doctor task dashboard and task lifecycle. |
 | `/api/doctor/wound-details` | `routes/doctorWoundDetailsRoutes.js` | Doctor wound tabs: images, measures, notes, reports. |
@@ -303,6 +304,7 @@ Routes are mounted in `app.js`.
 | `GET` | `/get-patient` | List patients. |
 | `GET` | `/get-patient/:id` | Get patient by ID. |
 | `PUT` | `/update-patient/:id` | Update patient. |
+| `PATCH` | `/reassign-patient/:id` | Reassign the nurse's patient to a nurse or doctor. |
 | `DELETE` | `/delete-patient/:id` | Delete patient. |
 
 ### Tasks: `/api/tasks`
@@ -445,6 +447,20 @@ Detailed requests, responses, validations, and frontend flows: [Doctor Authentic
 | `PUT` | `/wound-cases/:woundCaseId/instructions/:instructionId` | Update instructions. |
 | `DELETE` | `/wound-cases/:woundCaseId/instructions/:instructionId` | Delete instructions. |
 | `PATCH` | `/tasks/:taskId/complete` | Mark doctor task complete. |
+
+### Doctor Patients: `/api/doctor/patients`
+
+Requires a doctor bearer token.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/` | Create a patient and record the initial assignment. |
+| `GET` | `/ss` | List patients owned by the authenticated doctor. |
+| `GET` | `/:patientId` | Get an owned patient. |
+| `PUT` | `/:patientId` | Update an owned patient. |
+| `PATCH` | `/:patientId` | Partially update an owned patient. |
+| `PATCH` | `/:patientId/reassign` | Reassign an owned patient to a nurse or doctor. |
+| `DELETE` | `/:patientId` | Delete an owned patient. |
 
 ### Doctor Tasks: `/api/doctor/tasks`
 
@@ -614,7 +630,15 @@ Purpose: Patient demographic and assignment data.
 
 Important fields:
 
-- `id`, `nurse_id`, `first_name`, `last_name`, `date_of_birth`, `gender`, `mrn`, `address`, `room`, `wound_type`, `primary_staff`, `backup_staff`, `primary_diagnosis`, `allergies_notes`.
+- Assignment: `nurse_id`, `doctor_id`, `assigned_by`, `assigned_to`.
+- Demographics/clinical: `id`, `first_name`, `last_name`, `date_of_birth`, `gender`, `mrn`, `address`, `phone_number`, `room`, `wound_type`, `primary_staff`, `backup_staff`, `primary_diagnosis`, `allergies_notes`.
+
+Assignment meaning:
+
+- `assigned_by` stores the `users.id` of the nurse or doctor who created the patient. Reassignment does not change it.
+- `assigned_to` stores the `users.id` of the current primary assignee.
+- Assigning to a nurse updates `nurse_id` and `assigned_to`.
+- Assigning to a doctor updates `doctor_id` and `assigned_to`.
 
 ### `tasks`
 
@@ -695,6 +719,9 @@ status: active | trialing | cancelled | expired
 
 ```txt
 patients.nurse_id -> users.id
+patients.doctor_id -> users.id
+patients.assigned_by -> users.id
+patients.assigned_to -> users.id
 tasks.patient_id -> patients.id
 tasks.assigned_by -> users.id
 tasks.assigned_to -> users.id
