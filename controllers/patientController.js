@@ -1,5 +1,6 @@
 const Patient = require('../models/patientModel');
 const User = require('../models/userModel');
+const { Op } = require('sequelize');
 const { permanentlyDeletePatientRecord } = require('../utils/permanentDelete');
 
 const VALID_GENDERS = ['male', 'female', 'other'];
@@ -128,11 +129,15 @@ const ensureNurseExists = async (nurseId) => {
 
 const isNurse = (req) => req.user?.role === 'nurse';
 
+const getNursePatientScope = (nurseId) => ({
+  [Op.or]: [{ nurse_id: nurseId }, { assigned_to: nurseId }],
+});
+
 const getNurseScopedPatient = async (req, id) => {
   const where = { id };
 
   if (isNurse(req)) {
-    where.nurse_id = req.user.id;
+    Object.assign(where, getNursePatientScope(req.user.id));
   }
 
   return Patient.findOne({ where });
@@ -209,7 +214,7 @@ const getPatients = async (req, res) => {
     const where = {};
 
     if (isNurse(req)) {
-      where.nurse_id = req.user.id;
+      Object.assign(where, getNursePatientScope(req.user.id));
     }
 
     const patients = await Patient.findAll({

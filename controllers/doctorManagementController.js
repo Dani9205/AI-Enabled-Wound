@@ -339,18 +339,24 @@ const getPatients = async (req, res) => {
     const search = cleanString(req.query.search);
     const patients = await Patient.findAll({
       where: {
-        doctor_id: doctorId,
-        ...(search
-          ? {
-              [Op.or]: [
-                { first_name: { [Op.like]: `%${search}%` } },
-                { last_name: { [Op.like]: `%${search}%` } },
-                { room: { [Op.like]: `%${search}%` } },
-                { wound_type: { [Op.like]: `%${search}%` } },
-                { primary_diagnosis: { [Op.like]: `%${search}%` } },
-              ],
-            }
-          : {}),
+        [Op.and]: [
+          {
+            [Op.or]: [{ doctor_id: doctorId }, { assigned_to: doctorId }],
+          },
+          ...(search
+            ? [
+                {
+                  [Op.or]: [
+                    { first_name: { [Op.like]: `%${search}%` } },
+                    { last_name: { [Op.like]: `%${search}%` } },
+                    { room: { [Op.like]: `%${search}%` } },
+                    { wound_type: { [Op.like]: `%${search}%` } },
+                    { primary_diagnosis: { [Op.like]: `%${search}%` } },
+                  ],
+                },
+              ]
+            : []),
+        ],
       },
       order: [['createdAt', 'DESC']],
     });
