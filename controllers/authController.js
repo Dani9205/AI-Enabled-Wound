@@ -517,15 +517,25 @@ const acceptOrganizationRequest = async (req, res) => {
 
 
 
-// signin user >>> doctor, nurse, patient
+// // signin user >>> doctor, nurse, patient
 const signin = async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const { password } = req.body;
+    const fcmToken = String(req.body.fcm_token || req.body.fcmToken || '').trim();
+    const fcmPlatform = normalizeFcmPlatform(
+      req.body.fcm_platform || req.body.fcmPlatform
+    );
 
     if (!email || !password) {
       return res.status(400).json({
         message: 'Email and password are required',
+      });
+    }
+
+    if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
+      return res.status(400).json({
+        message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
       });
     }
 
@@ -568,6 +578,10 @@ const signin = async (req, res) => {
 
     await user.save();
 
+    if (fcmToken) {
+      await registerPushToken(user.id, fcmToken, fcmPlatform || 'android');
+    }
+
     const token = signToken({
       id: user.id,
       email: user.email,
@@ -589,6 +603,78 @@ const signin = async (req, res) => {
     });
   }
 };
+
+// const signin = async (req, res) => {
+//   try {
+//     const email = normalizeEmail(req.body.email);
+//     const { password } = req.body;
+
+//     if (!email || !password) {
+//       return res.status(400).json({
+//         message: 'Email and password are required',
+//       });
+//     }
+
+//     const user = await User.findOne({ where: { email } });
+
+//     if (!user) {
+//       return res.status(404).json({
+//         message: 'User not found',
+//       });
+//     }
+
+//     if (!verifyPassword(password, user.password_hash)) {
+//       return res.status(401).json({
+//         message: 'Invalid email or password',
+//       });
+//     }
+
+//     if (user.request_status !== 'accepted') {
+//       const message =
+//         user.request_status === 'pending'
+//           ? 'Your account request is pending admin approval'
+//           : user.request_status === 'suspended'
+//             ? 'Your account request has been suspended'
+//             : 'Your account request has not been accepted by an admin';
+
+//       return res.status(403).json({
+//         message,
+//         request_status: user.request_status,
+//       });
+//     }
+
+//     if (['deactivated', 'deleted'].includes(user.account_status)) {
+//       return res.status(403).json({
+//         message: 'User account is not active',
+//       });
+//     }
+
+//     user.last_login_at = new Date();
+//     user.account_status = 'active';
+
+//     await user.save();
+
+//     const token = signToken({
+//       id: user.id,
+//       email: user.email,
+//       role: user.role,
+//     });
+
+//     user.auth_token = token;
+//     await user.save();
+
+//     return res.status(200).json({
+//       message: 'Login successful',
+//       token,
+//       user: publicUser(user),
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       message: 'Signin failed',
+//       error: error.message,
+//     });
+//   }
+// };
 
 
 

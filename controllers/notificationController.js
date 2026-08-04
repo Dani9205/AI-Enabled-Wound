@@ -1,7 +1,6 @@
 const { Op } = require('sequelize');
 const Notification = require('../models/notificationModel');
 const User = require('../models/userModel');
-const { sendNotificationPush } = require('../services/pushNotificationService');
 
 const VALID_TYPES = [
   'wound_update',
@@ -210,12 +209,10 @@ const createNotification = async (req, res) => {
     }
 
     const notification = await Notification.create(payload);
-    const push = await sendNotificationPush(notification);
 
     return res.status(201).json({
       message: 'Notification created successfully',
       notification: notificationResponse(notification),
-      push,
     });
   } catch (error) {
     return res.status(500).json({

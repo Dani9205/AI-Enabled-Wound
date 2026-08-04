@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
+const { sendNotificationPush } = require('../services/pushNotificationService');
 
 const Notification = sequelize.define(
   'Notification',
@@ -64,6 +65,30 @@ const Notification = sequelize.define(
   {
     tableName: 'notifications',
     underscored: true,
+  }
+);
+
+const pushCreatedNotification = async (notification) => {
+  try {
+    await sendNotificationPush(notification);
+  } catch (error) {
+    console.error(
+      `Push notification failed for notification ${notification.id}:`,
+      error.message
+    );
+  }
+};
+
+Notification.addHook(
+  'afterCreate',
+  'sendPushForCreatedNotification',
+  async (notification, options) => {
+    if (options.transaction) {
+      options.transaction.afterCommit(() => pushCreatedNotification(notification));
+      return;
+    }
+
+    await pushCreatedNotification(notification);
   }
 );
 
