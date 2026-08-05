@@ -1,129 +1,188 @@
-# AI-Enabled Wound APIs - Project Documentation
+# AI-Enabled Wound APIs — Complete Project Documentation
 
-Last updated: 2026-07-29
+Last verified against the source code: 2026-08-04
 
-## 1. Project Overview
+## 1. Project overview
 
-AI-Enabled Wound APIs is a Node.js and Express backend for a wound care application. It supports nurse, doctor, patient, admin, task, wound case, notification, handoff, profile, and subscription workflows.
+AI-Enabled Wound APIs is a Node.js/Express backend for a wound-care platform used by nurses, doctors, patients, administrators, and organizations. It provides account onboarding, clinical patient and wound management, task assignment, handoffs, notifications, reports, subscriptions, local media storage, speech transcription, and AI-assisted clinical documentation.
 
-Main responsibilities:
+Primary capabilities:
 
-- User account creation, sign in, password reset, email/OTP verification, and role management.
-- Nurse workflows for patients, tasks, wound cases, reports, dashboard, handoff, notifications, and profile settings.
-- Doctor workflows for onboarding, dashboard, patient management, wound review, instructions, tasks, handoff, notifications, and profile settings.
-- Patient app workflows for dashboard, healing progress, wound profile, reports, notifications, and profile settings.
-- Admin login and account review support.
-- MySQL persistence through Sequelize models.
+- Common, doctor-specific, and patient-specific signup/sign-in flows.
+- Organization membership and account-review fields.
+- Nurse and doctor patient ownership, assignment, reassignment, and archival.
+- Wound cases with timelines, images, measurements, clinical notes, voice dictation, SOAP notes, and reports.
+- Nurse and doctor task lifecycle management.
+- Nurse and doctor handoff workflows.
+- Patient dashboard, wound profile, healing progress, reports, and settings.
+- Database notifications with Firebase Cloud Messaging push delivery.
+- Subscription plans, StoreKit 2 verification/restore, and usage tracking.
+- Local profile-photo, wound-image, voice-audio, and PDF storage.
 
-## 2. Technology Stack
+## 2. Technology stack
 
 | Area | Technology |
-| --- | --- |
-| Runtime | Node.js |
-| Framework | Express.js |
+|---|---|
+| Runtime | Node.js, CommonJS modules |
+| HTTP framework | Express 4 |
 | Database | MySQL |
-| ORM | Sequelize |
-| Mail | Nodemailer |
-| File uploads | Multer |
-| PDF generation | PDFKit |
-| Speech-to-text | Configurable Whisper service |
-| AI report generation | OpenAI Responses API |
-| Env loading | dotenv |
-| Dev server | nodemon |
-| Auth/security helpers | Node crypto, custom JWT-style HMAC token helpers |
+| ORM | Sequelize 6 |
+| Authentication | Custom HMAC SHA-256 JWT-like bearer tokens |
+| Password hashing | PBKDF2-SHA512, per-password salt, 120,000 iterations |
+| Email | Nodemailer/SMTP |
+| Push notifications | Firebase Admin SDK / Firebase Cloud Messaging |
+| Multipart uploads | Multer |
+| PDF creation | PDFKit |
+| AI generation | OpenAI Responses API |
+| Voice transcription | Configurable external Whisper-compatible service |
+| Development process | nodemon |
 
-## 3. Project Structure
+## 3. Repository structure
 
-```txt
+```text
 .
 |-- app.js
 |-- config/
 |   |-- config.js
-|   `-- db.js
+|   |-- db.js
+|   `-- firebase.js
 |-- controllers/
 |-- docs/
-|   |-- API_REFERENCE.md
-|   |-- AUTH_ME_API.md
-|   `-- PROJECT_DOCUMENTATION.md
 |-- middleware/
-|   |-- authMiddleware.js
-|   |-- profilePhotoUpload.js
-|   `-- woundImageUpload.js
 |-- migrations/
 |-- models/
 |-- postman/
 |-- routes/
 |-- scripts/
+|-- services/
 |-- uploads/
-|   |-- profile-photos/
-|   |-- reports/
-|   |-- voice-dictations/
-|   `-- wound-images/
-`-- utils/
+|-- utils/
+|-- .env
+|-- package.json
+`-- package-lock.json
 ```
 
-Important folders:
+| Path | Responsibility |
+|---|---|
+| `app.js` | Express bootstrap, middleware, route mounts, Sequelize sync, and server startup. |
+| `config/` | Database and Firebase Admin configuration. |
+| `controllers/` | Request validation, business logic, persistence, and response formatting. |
+| `routes/` | HTTP method/path definitions and route-level middleware. |
+| `models/` | Sequelize table definitions and notification creation hook. |
+| `middleware/` | Bearer authentication, role checks, and multipart file handling. |
+| `services/` | Firebase push-delivery service. |
+| `utils/` | Security, mail, organization resolution, and permanent-delete helpers. |
+| `migrations/` | MySQL schema synchronization and incremental migrations. |
+| `scripts/` | Admin creation, data synchronization, and API smoke testing. |
+| `postman/` | Main and doctor Postman collections/environments. |
+| `uploads/` | Runtime local storage, publicly served under `/uploads`. |
 
-| Path | Purpose |
-| --- | --- |
-| `app.js` | Express app bootstrap, middleware, route mounting, Sequelize sync, server start. |
-| `config/` | Sequelize database configuration. |
-| `controllers/` | Business logic for each API module. |
-| `routes/` | Express route definitions and URL mapping. |
-| `models/` | Sequelize models for database tables. |
-| `middleware/` | Authentication, role, and multipart image upload middleware. |
-| `utils/` | Shared helpers for security and mail. |
-| `uploads/` | Runtime upload destination. Ignored by git; served publicly from `/uploads`. |
-| `migrations/` | SQL migration/support scripts. |
-| `scripts/` | Utility scripts for admin/user/data maintenance and smoke testing. |
-| `postman/` | Postman collections and environments for API testing. |
-| `docs/API_REFERENCE.md` | Detailed API request/response reference. |
-| `docs/AUTH_SIGNUP_SIGNIN_API.md` | Detailed common signup, organization signup, signin, and FCM behavior. |
+## 4. Runtime architecture
 
-## 4. Application Entry Point
+```text
+Client application
+      |
+      v
+Express route -> authentication/role middleware -> controller
+      |                                           |
+      |                                           +-> Sequelize model -> MySQL
+      |                                           +-> Multer -> local uploads
+      |                                           +-> OpenAI / Whisper / SMTP
+      |                                           `-> PDFKit
+      |
+      `-> Notification.create()
+                    |
+                    v
+             afterCreate hook
+                    |
+                    v
+        user.fcm_token -> Firebase Cloud Messaging
+```
 
-`app.js` creates the Express app and mounts all route modules.
+### Startup sequence
 
-Server behavior:
+`app.js` performs the following:
 
-- Loads `.env` using `dotenv`.
-- Initializes Sequelize from `config/db.js`.
-- Registers all Sequelize models.
-- Enables JSON and URL-encoded request parsing.
-- Serves uploaded files from `/uploads`.
-- Mounts API route groups under `/api/...`.
-- Runs `sequelize.sync(syncOptions)` before listening.
-- Uses `DB_SYNC_ALTER=true` to run Sequelize sync with `{ alter: true }`.
-- Starts on `process.env.PORT` or `3000`.
+1. Loads `.env` through `dotenv`.
+2. Imports the Sequelize instance; `config/db.js` immediately authenticates with MySQL.
+3. Registers all eight Sequelize models.
+4. Enables JSON and URL-encoded body parsing.
+5. Serves `uploads/` as a public static directory.
+6. Mounts 23 route modules under `/api`.
+7. Runs `sequelize.sync()` or `sequelize.sync({ alter: true })` when `DB_SYNC_ALTER=true`.
+8. Listens on `PORT`, defaulting to `3000`.
 
-## 5. Environment Variables
+## 5. Installation and local run
 
-Expected `.env` variables:
+### Prerequisites
+
+- Node.js compatible with the installed dependencies.
+- MySQL server and a database/user with schema permissions.
+- SMTP credentials for verification/password-reset email flows.
+- Optional Firebase, OpenAI, Whisper, and StoreKit configuration for those features.
+
+### Install
+
+```bash
+npm install
+```
+
+### Start
+
+```bash
+npm start
+```
+
+Development mode:
+
+```bash
+npm run dev
+```
+
+Default local URL:
+
+```text
+http://localhost:3000
+```
+
+### NPM scripts
+
+| Command | Behavior |
+|---|---|
+| `npm start` | Runs `node app.js`. |
+| `npm run dev` | Runs `nodemon app.js`. |
+| `npm test` | Placeholder; intentionally exits with an error because no automated suite is configured. |
+
+## 6. Environment configuration
+
+Do not commit `.env`, private keys, API keys, SMTP passwords, StoreKit credentials, or FCM registration tokens.
+
+### Core server and database
 
 ```env
 PORT=3000
-DB_NAME=database_name
-DB_USER=database_user
-DB_PASSWORD=database_password
-DB_HOST=localhost
+NODE_ENV=development
+DB_NAME=ai_enabled_wound_db
+DB_USER=your_database_user
+DB_PASSWORD=your_database_password
+DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DIALECT=mysql
-JWT_SECRET=your_secret_key
-JWT_EXPIRES_IN_SECONDS=86400
-WHISPER_SERVICE_URL=http://localhost:8000/transcribe
-WHISPER_SERVICE_API_KEY=optional_service_token
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_REPORT_MODEL=gpt-4.1-mini
-OPENAI_REPORT_FALLBACK_MODEL=gpt-4.1-mini
 DB_SYNC_ALTER=false
-APPLE_BUNDLE_ID=com.yourcompany.yourapp
-APP_STORE_BASIC_PRODUCT_ID=com.yourcompany.yourapp.subscription.basic.monthly
-APP_STORE_PROFESSIONAL_PRODUCT_ID=com.yourcompany.yourapp.subscription.professional.monthly
-APP_STORE_ORGANIZATION_PRODUCT_ID=com.yourcompany.yourapp.subscription.organization.monthly
-APPLE_STOREKIT_VERIFY_SIGNATURE=true
 ```
 
-Mail-related variables used by `utils/mailer.js`:
+`NODE_ENV=production` makes the doctor password-reset session cookie use the `Secure` flag.
+
+### Authentication
+
+```env
+JWT_SECRET=replace-with-a-long-random-secret
+JWT_EXPIRES_IN_SECONDS=86400
+```
+
+`JWT_EXPIRES_IN_SECONDS` defaults to one day. Tokens use a JWT-like `header.payload.signature` format but are implemented locally rather than through a standard JWT package.
+
+### SMTP email
 
 ```env
 MAIL_HOST=smtp.example.com
@@ -134,523 +193,172 @@ MAIL_PASS=your_smtp_password
 MAIL_FROM=no-reply@example.com
 ```
 
-## 6. Install and Run
+`MAIL_HOST`, `MAIL_USER`, and `MAIL_PASS` are required by email-code flows.
 
-Install dependencies:
+### Firebase Cloud Messaging
 
-```bash
-npm install
+Inline service-account credentials:
+
+```env
+FIREBASE_PROJECT_ID=your-firebase-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxx@project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
-Start production-style server:
+Or use Application Default Credentials:
 
-```bash
-npm start
+```env
+FIREBASE_PROJECT_ID=your-firebase-project-id
+GOOGLE_APPLICATION_CREDENTIALS=C:\secure\firebase-service-account.json
 ```
 
-Start development server:
+If `FIREBASE_PROJECT_ID` is absent, push delivery is skipped without failing notification creation.
 
-```bash
-npm run dev
+### OpenAI and voice transcription
+
+```env
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_SOAP_MODEL=gpt-4.1-mini
+OPENAI_REPORT_MODEL=gpt-4.1-mini
+OPENAI_REPORT_FALLBACK_MODEL=gpt-4.1-mini
+WHISPER_SERVICE_URL=http://localhost:8000/transcribe
+WHISPER_SERVICE_API_KEY=optional_service_token
+WHISPER_MODEL=whisper-1
 ```
 
-The local server starts at:
+The code falls back to `gpt-4.1-mini` for SOAP/report generation and `whisper-1` for transcription when their model variables are absent.
 
-```txt
-http://localhost:3000
+### Apple subscriptions
+
+```env
+APPLE_BUNDLE_ID=com.example.woundapp
+APP_STORE_BASIC_PRODUCT_ID=com.example.woundapp.basic.monthly
+APP_STORE_PROFESSIONAL_PRODUCT_ID=com.example.woundapp.professional.monthly
+APP_STORE_ORGANIZATION_PRODUCT_ID=com.example.woundapp.organization.monthly
+APP_STORE_PRODUCT_IDS={"basic":"...","professional":"...","organization":"..."}
+APPLE_STOREKIT_VERIFY_SIGNATURE=true
 ```
 
-or the configured `PORT`. The production/reference URL used in the docs is `https://aiwond.appistansoft.com`.
+### Admin bootstrap script
 
-## 7. Available Scripts
-
-| Command | Purpose |
-| --- | --- |
-| `npm start` | Runs `node app.js`. |
-| `npm run dev` | Runs `nodemon app.js`. |
-| `npm test` | Placeholder script; currently exits with an error. |
-
-Utility scripts:
-
-| File | Purpose |
-| --- | --- |
-| `scripts/createAdminUser.js` | Creates an admin user. |
-| `scripts/syncMissingUserReviewFields.js` | Syncs missing user review/account fields. |
-| `scripts/apiSmokeTest.js` | Runs API smoke checks. |
-
-## 8. Authentication and Authorization
-
-Security helpers are implemented in `utils/security.js`.
-
-Password handling:
-
-- Passwords are hashed using PBKDF2.
-- Salt is generated per password.
-- Verification uses timing-safe comparison.
-
-Code/OTP handling:
-
-- Six digit codes are generated through `crypto.randomInt`.
-- Common auth currently stores plain six digit codes on the user row for signup/reset verification.
-- `utils/security.js` also contains SHA-256 code hash helpers that can be used if code storage is hardened later.
-
-Token handling:
-
-- Tokens are custom HMAC SHA-256 signed tokens with JWT-like `header.body.signature` format.
-- `JWT_SECRET` is required.
-- `JWT_EXPIRES_IN_SECONDS` controls expiry, defaulting to `86400`.
-
-Middleware:
-
-| Middleware | Purpose |
-| --- | --- |
-| `authenticateToken` | Reads `Authorization: Bearer <token>`, verifies token, loads user, rejects deleted users. |
-| `requireRoles(...roles)` | Allows only users whose `role` matches one of the required roles. |
-| `adminAuthMiddleware` | Combines token auth with `admin` / `super_admin` role checks. |
-
-Current protection status:
-
-- Nurse patient, task, wound case, and dashboard routes use `authenticateToken` and require `nurse`.
-- Patient app/profile/notification routes use `authenticateToken` and require `patient`.
-- `/api/auth/me` uses `authenticateToken`; it returns the current logged-in user from the bearer token.
-- `/api/auth/upload-image` uses `authenticateToken`; it updates only the logged-in user's `profile_photo_url`.
-- Some legacy/common profile, notification, handoff, doctor, and admin-adjacent routes still rely on URL/body identifiers or controller checks instead of consistent route-level RBAC.
-- Route-level RBAC should be reviewed before production use.
-
-## 9. API Base URL
-
-Local base URL:
-
-```txt
-http://localhost:3000
+```env
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=replace-with-a-strong-password
+ADMIN_FIRST_NAME=System
+ADMIN_LAST_NAME=Admin
+ADMIN_ROLE=admin
 ```
 
-Production/reference base URL used in the existing API reference:
+## 7. Authentication and authorization
 
-```txt
-https://aiwond.appistansoft.com
-```
+### Passwords and codes
 
-Common headers:
+- Passwords are stored as `iterations:salt:hash` using PBKDF2-SHA512.
+- Password comparison uses timing-safe equality.
+- Verification/reset codes contain six digits and expire after ten minutes in common auth flows.
+- Common auth currently stores the six-digit code directly in the user row. SHA-256 code helper functions exist but are not consistently used.
+
+### Bearer-token middleware
+
+Protected endpoints expect:
 
 ```http
-Content-Type: application/json
-Accept: application/json
-Authorization: Bearer <token>
+Authorization: Bearer <access-token>
 ```
 
-For file upload endpoints, use `multipart/form-data` instead of `application/json`.
+`authenticateToken` verifies the signature/expiry, loads the user, rejects missing/deleted users, and assigns `req.auth` and `req.user`. `requireRoles(...)` then checks the loaded user's role.
 
-Common error response:
+### Roles
 
-```json
-{
-  "message": "Error message",
-  "error": "Optional technical detail"
-}
+```text
+doctor | nurse | patient | user | admin | super_admin
 ```
 
-## 10. Route Groups
+### Authentication labels used below
 
-Routes are mounted in `app.js`.
+| Label | Meaning |
+|---|---|
+| Public | No route-level authentication middleware is applied. |
+| Bearer | Any valid bearer token. |
+| Nurse | Valid bearer token and `nurse` role. |
+| Doctor | Valid bearer token and `doctor` role. |
+| Patient | Valid bearer token and `patient` role. |
 
-| Prefix | Route File | Main Purpose |
-| --- | --- | --- |
-| `/api/auth` | `routes/authRoutes.js` | Common/nurse auth and role management. |
-| `/api/patients` | `routes/patientRoutes.js` | Nurse patient CRUD and reassignment. |
-| `/api/tasks` | `routes/taskRoutes.js` | Nurse/common task CRUD and assignment. |
-| `/api/wound-cases` | `routes/woundCaseRoutes.js` | Wound case CRUD, images, measurements, notes, reports. |
-| `/api/dashboard` | `routes/dashboardRoutes.js` | Nurse dashboard stats and lists. |
-| `/api/profile` | `routes/profileRoutes.js` | Nurse/common profile and settings. |
-| `/api/handoffs` | `routes/handoffRoutes.js` | Nurse patient handoff flow. |
-| `/api/notifications` | `routes/notificationRoutes.js` | Common notification APIs. |
-| `/api/subscriptions` | `routes/subscriptionRoutes.js` | Plans, checkout, subscribe, StoreKit verify/restore, usage, cancel. |
-| `/api/admin` | `routes/adminRoutes.js` | Admin login. |
-| `/api/doctor/auth` | `routes/doctorAuthRoutes.js` | Doctor signup/signin/password reset. |
-| `/api/doctor/patients` | `routes/doctorPatientRoutes.js` | Authenticated doctor patient CRUD and reassignment. |
-| `/api/doctor` | `routes/doctorManagementRoutes.js` | Doctor home, patients, wound cases, instructions. |
-| `/api/doctor/tasks` | `routes/doctorTaskRoutes.js` | Doctor task dashboard and task lifecycle. |
-| `/api/doctor/wound-details` | `routes/doctorWoundDetailsRoutes.js` | Doctor wound tabs: images, measures, notes, reports. |
-| `/api/doctor/profile-settings` | `routes/doctorProfileSettingsRoutes.js` | Doctor profile, security, settings, handoff. |
-| `/api/doctor/patient-handoff` | `routes/doctorPatientHandoffRoutes.js` | Doctor 3-step patient handoff flow. |
-| `/api/doctor/notifications` | `routes/doctorNotificationRoutes.js` | Doctor notification tabs/actions. |
-| `/api/patient/auth` | `routes/patientAuthRoutes.js` | Patient signup/signin/password reset. |
-| `/api/patient/app` | `routes/patientAppRoutes.js` | Patient dashboard, healing progress, wound profile, reports. |
-| `/api/patient/profile` | `routes/patientProfileRoutes.js` | Patient profile, security, settings, delete/signout. |
-| `/api/patient/notifications` | `routes/patientNotificationRoutes.js` | Patient notifications. |
+Public means only that middleware is absent in the current route definition; it does not mean the endpoint is safe to expose publicly.
 
-## 11. Endpoint Catalog
+## 8. Database design
 
-### Common Auth: `/api/auth`
+The project defines eight Sequelize models. Column names are stored in snake case because all models use `underscored: true`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/me` | Fetch current authenticated user from bearer token. |
-| `POST` | `/create-account` | Create user account and optionally register its FCM token. |
-| `POST` | `/create-organization-account` | Create organization account request and optionally register its FCM token. |
-| `POST` | `/upload-image` | Authenticated profile image upload; updates current user's `profile_photo_url`. |
-| `PUT` | `/accept-organization-request` | Accept an organization account request. |
-| `POST` | `/signin` | Sign in user using email/password; does not update FCM data. |
-| `POST` | `/verify-code` | Verify signup/signin code. |
-| `POST` | `/forgot-password` | Send password reset code. |
-| `POST` | `/reset-password` | Reset password. |
-| `PUT` | `/change-role` | Change user role. |
-
-### Patients: `/api/patients`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/create-patient` | Create patient. |
-| `GET` | `/get-patient` | List patients. |
-| `GET` | `/get-patient/:id` | Get patient by ID. |
-| `PUT` | `/update-patient/:id` | Update patient. |
-| `PATCH` | `/reassign-patient/:id` | Reassign the nurse's patient to a nurse or doctor. |
-| `DELETE` | `/delete-patient/:id` | Delete patient. |
-
-### Tasks: `/api/tasks`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/create-task` | Create task. |
-| `GET` | `/get-task` | List tasks. |
-| `GET` | `/get-task/:id` | Get task by ID. |
-| `PUT` | `/update-task/:id` | Update task. |
-| `PATCH` | `/complete-task/:id` | Mark task complete. |
-| `PATCH` | `/reassign-task/:id` | Reassign task. |
-| `DELETE` | `/delete-task/:id` | Delete task. |
-
-### Wound Cases: `/api/wound-cases`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/create-wound-case` | Create wound case. |
-| `GET` | `/get-wound-case` | List wound cases. |
-| `GET` | `/get-wound-case/:id` | Get wound case by ID. |
-| `PUT` | `/update-wound-case/:id` | Update wound case. |
-| `PATCH` | `/add-wound-update/:id` | Add wound update. |
-| `GET` | `/get-timeline/:id` | Get wound timeline. |
-| `GET` | `/get-images/:id` | Get wound images. |
-| `PATCH` | `/add-wound-image/:id` | Upload/add wound image file or URL. |
-| `DELETE` | `/delete-wound-image/:id/:imageId` | Delete image metadata. |
-| `GET` | `/get-measurements/:id` | Get measurements. |
-| `PATCH` | `/add-measurement/:id` | Add measurement. |
-| `GET` | `/get-notes/:id` | Get clinical notes. |
-| `PATCH` | `/add-note/:id` | Add clinical note. |
-| `POST` | `/save-voice-dictation/:id` | Save voice dictation transcript and/or uploaded audio file. |
-| `POST` | `/transcribe-voice-dictation/:id/:noteId?` | Transcribe uploaded or saved voice dictation audio and save transcript. |
-| `POST` | `/generate-soap-note/:id` | Generate and save a structured AI SOAP note from the clinical narrative and wound case facts. |
-| `GET` | `/get-reports/:id` | Get reports. |
-| `POST` | `/generate-report/:id` | Generate report metadata; uses AI report service when configured. |
-| `POST` | `/generate-ai-report/:id` | Alias for AI-backed report generation. |
-| `PATCH` | `/add-report/:id` | Add report metadata. |
-| `GET` | `/preview-report/:id/:reportId` | Preview report data. |
-| `GET` | `/download-report/:id/:reportId` | Generate/save report PDF and return download URL. |
-| `PATCH` | `/share-report/:id/:reportId` | Share report. |
-| `DELETE` | `/delete-wound-case/:id` | Delete wound case. |
-
-### Dashboard: `/api/dashboard`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/home` | Home dashboard. |
-| `GET` | `/stats` | Dashboard stats. |
-| `GET` | `/today-tasks` | Today's tasks. |
-| `GET` | `/assigned-patients` | Assigned patients. |
-| `GET` | `/recent-updates` | Recent wound/task updates. |
-
-### Profile: `/api/profile`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/get-profile/:id` | Get profile. |
-| `PUT` | `/update-profile/:id` | Update profile. |
-| `GET` | `/security-settings/:id` | Get security settings. |
-| `PATCH` | `/change-password/:id` | Change password. |
-| `PATCH` | `/sign-out-all-devices/:id` | Sign out all devices. |
-| `GET` | `/notification-preferences/:id` | Get notification preferences. |
-| `PATCH` | `/notification-preferences/:id` | Update notification preferences. |
-| `GET` | `/app-settings/:id` | Get app settings. |
-| `PATCH` | `/app-settings/:id` | Update app settings. |
-| `POST` | `/patient-handoff/:id` | Simple patient handoff. |
-| `POST` | `/sign-out/:id` | Sign out. |
-| `DELETE` | `/delete-account/:id` | Delete account. |
-
-### Nurse Handoffs: `/api/handoffs`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/patients/:nurseId` | Selectable handoff patients. |
-| `GET` | `/available-nurses/:nurseId` | Available receiving nurses. |
-| `POST` | `/create` | Create handoff draft. |
-| `GET` | `/get/:id` | Get handoff details. |
-| `PATCH` | `/select-nurse/:id` | Select receiving nurse. |
-| `PATCH` | `/notes/:id` | Add handoff notes. |
-| `PATCH` | `/confirm/:id` | Confirm handoff. |
-| `GET` | `/success/:id` | Handoff success summary. |
-
-### Notifications: `/api/notifications`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/get-notifications/:userId` | Get user notifications. |
-| `GET` | `/get-notifications` | Get notifications using query params. |
-| `POST` | `/create-notification` | Create notification. |
-| `PATCH` | `/mark-read/:id` | Mark notification read. |
-| `PATCH` | `/mark-all-read/:userId` | Mark all read. |
-| `DELETE` | `/clear/:id` | Clear one notification. |
-| `DELETE` | `/clear-all/:userId` | Clear all notifications. |
-
-### Subscriptions: `/api/subscriptions`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/plans` | List plans. |
-| `GET` | `/plans/:planCode` | Get plan detail. |
-| `POST` | `/checkout-session` | Create checkout session data. |
-| `POST` | `/subscribe` | Create/update subscription. |
-| `POST` | `/apple/verify` | Verify a StoreKit 2 signed transaction and update subscription. |
-| `POST` | `/apple/restore` | Verify restored StoreKit 2 transactions and restore subscription. |
-| `GET` | `/current/:userId` | Get current subscription. |
-| `GET` | `/manage/:userId` | Get subscription management data. |
-| `PATCH` | `/usage/:userId` | Update usage. |
-| `PATCH` | `/cancel/:userId` | Cancel subscription. |
-
-### Admin: `/api/admin`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/login` | Admin login. |
-
-### Doctor Auth: `/api/doctor/auth`
-
-Detailed requests, responses, validations, and frontend flows: [Doctor Authentication APIs](DOCTOR_AUTH_APIS.md).
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/signup/personal-information` | Submit doctor personal info. |
-| `POST` | `/signup/professional-credentials` | Submit professional credentials. |
-| `POST` | `/signup/set-password` | Set account password. |
-| `POST` | `/signin` | Doctor sign in. |
-| `POST` | `/forgot-password` | Send reset OTP. |
-| `POST` | `/verify-otp` | Verify OTP. |
-| `POST` | `/reset-password` | Reset password. |
-
-### Doctor Management: `/api/doctor`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/home` | Doctor home dashboard. |
-| `GET` | `/patients` | Doctor patient list. |
-| `GET` | `/patients/:patientId` | Patient details. |
-| `GET` | `/wound-cases/:woundCaseId` | Wound case details. |
-| `POST` | `/wound-cases/:woundCaseId/instructions` | Add doctor instructions. |
-| `PUT` | `/wound-cases/:woundCaseId/instructions/:instructionId` | Update instructions. |
-| `DELETE` | `/wound-cases/:woundCaseId/instructions/:instructionId` | Delete instructions. |
-| `PATCH` | `/tasks/:taskId/complete` | Mark doctor task complete. |
-
-### Doctor Patients: `/api/doctor/patients`
-
-Requires a doctor bearer token.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/` | Create a patient and record the initial assignment. |
-| `GET` | `/ss` | List patients owned by the authenticated doctor. |
-| `GET` | `/:patientId` | Get an owned patient. |
-| `PUT` | `/:patientId` | Update an owned patient. |
-| `PATCH` | `/:patientId` | Partially update an owned patient. |
-| `PATCH` | `/:patientId/reassign` | Reassign an owned patient to a nurse or doctor. |
-| `DELETE` | `/:patientId` | Delete an owned patient. |
-
-### Doctor Tasks: `/api/doctor/tasks`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/dashboard` | Doctor task dashboard. |
-| `GET` | `/options` | Create task dropdown options. |
-| `GET` | `/` | List tasks. |
-| `POST` | `/` | Create task. |
-| `GET` | `/:taskId` | Task details. |
-| `PUT` | `/:taskId` | Update task. |
-| `PATCH` | `/:taskId/complete` | Complete task. |
-| `GET` | `/:taskId/reassign-options` | Reassignment options. |
-| `PATCH` | `/:taskId/reassign` | Reassign task. |
-| `DELETE` | `/:taskId` | Delete task. |
-
-### Doctor Wound Details: `/api/doctor/wound-details`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/:woundCaseId/images` | Images tab. |
-| `GET` | `/:woundCaseId/measurements` | Measurements tab. |
-| `GET` | `/:woundCaseId/notes` | Notes tab. |
-| `GET` | `/:woundCaseId/reports` | Reports tab. |
-| `POST` | `/:woundCaseId/reports/generate` | Generate report metadata. |
-| `GET` | `/:woundCaseId/reports/:reportId` | Report detail. |
-| `POST` | `/:woundCaseId/reports/:reportId/share` | Share report. |
-
-### Doctor Profile Settings: `/api/doctor/profile-settings`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/:doctorId/profile` | Get profile. |
-| `PUT` | `/:doctorId/profile` | Update profile. |
-| `GET` | `/:doctorId/security` | Security settings. |
-| `PATCH` | `/:doctorId/security/change-password` | Change password. |
-| `PATCH` | `/:doctorId/security/sign-out-all-devices` | Sign out all devices. |
-| `GET` | `/:doctorId/notifications` | Notification preferences. |
-| `PATCH` | `/:doctorId/notifications` | Update notification preferences. |
-| `GET` | `/:doctorId/app-settings` | App settings. |
-| `PATCH` | `/:doctorId/app-settings` | Update app settings. |
-| `GET` | `/:doctorId/handoff` | Handoff summary. |
-| `POST` | `/:doctorId/handoff` | Initiate handoff. |
-| `POST` | `/:doctorId/sign-out` | Sign out. |
-| `DELETE` | `/:doctorId/delete-account` | Delete account. |
-
-### Doctor Patient Handoff: `/api/doctor/patient-handoff`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/:doctorId/patients` | Select patients. |
-| `GET` | `/:doctorId/available-staff` | Select receiving staff. |
-| `POST` | `/draft` | Create draft. |
-| `GET` | `/:handoffId` | Handoff details/review. |
-| `PATCH` | `/:handoffId/select-staff` | Select receiving staff. |
-| `PATCH` | `/:handoffId/notes` | Add notes. |
-| `PATCH` | `/:handoffId/confirm` | Confirm handoff. |
-| `GET` | `/:handoffId/success` | Success summary. |
-
-### Doctor Notifications: `/api/doctor/notifications`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/:doctorId` | Get notifications. |
-| `POST` | `/:doctorId` | Create notification. |
-| `PATCH` | `/:doctorId/mark-all-read` | Mark all read. |
-| `DELETE` | `/:doctorId/clear-all` | Clear all. |
-| `PATCH` | `/:doctorId/:notificationId/read` | Mark one read. |
-| `DELETE` | `/:doctorId/:notificationId` | Clear one. |
-
-### Patient Auth: `/api/patient/auth`
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/signup/personal-information` | Submit patient personal info. |
-| `POST` | `/signup/professional-credentials` | Submit patient professional/profile info. |
-| `POST` | `/signup/professional-information` | Alias for professional credentials. |
-| `POST` | `/signup/set-password` | Set password. |
-| `POST` | `/signin` | Patient sign in. |
-| `POST` | `/forgot-password` | Start password reset. |
-| `POST` | `/reset-password` | Reset password. |
-
-### Patient App: `/api/patient/app`
-
-Requires patient bearer token.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/dashboard` | Patient dashboard. |
-| `GET` | `/healing-progress` | Healing progress for default/latest wound. |
-| `GET` | `/healing-progress/:woundCaseId` | Healing progress for wound case. |
-| `GET` | `/reports` | Patient reports list. |
-| `GET` | `/reports/:reportId` | Report details. |
-| `GET` | `/reports/:reportId/download` | Report download URL/data. |
-| `GET` | `/wound-profile/:woundCaseId` | Wound profile summary. |
-| `GET` | `/wound-profile/:woundCaseId/timeline` | Wound timeline. |
-| `GET` | `/wound-profile/:woundCaseId/images` | Images and before/after view. |
-| `GET` | `/wound-profile/:woundCaseId/measurements` | Measurements. |
-| `GET` | `/wound-profile/:woundCaseId/measures` | Alias for measurements. |
-| `GET` | `/wound-profile/:woundCaseId/notes` | Clinical notes. |
-| `GET` | `/wound-profile/:woundCaseId/reports` | Wound reports. |
-| `GET` | `/wound-profile/:woundCaseId/reports/:reportId/preview` | PDF preview data. |
-| `GET` | `/wound-profile/:woundCaseId/reports/:reportId/download` | Wound report download URL/data. |
-| `POST` | `/wound-profile/:woundCaseId/reports/:reportId/share` | Share wound report. |
-| `GET` | `/wound-profile/:woundCaseId/reports/:reportId` | Wound report details. |
-
-### Patient Profile: `/api/patient/profile`
-
-Requires patient bearer token.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/` | Get patient profile. |
-| `GET` | `/edit-profile` | Get editable profile data. |
-| `PATCH` | `/edit-profile` | Update profile. |
-| `GET` | `/security-settings` | Security settings. |
-| `PATCH` | `/change-password` | Change password. |
-| `PATCH` | `/sign-out-all-devices` | Sign out all devices. |
-| `GET` | `/notifications` | Notification preferences. |
-| `PATCH` | `/notifications` | Update notification preferences. |
-| `GET` | `/app-settings` | App settings. |
-| `PATCH` | `/app-settings` | Update app settings. |
-| `POST` | `/sign-out` | Sign out. |
-| `DELETE` | `/delete-account` | Delete account. |
-
-### Patient Notifications: `/api/patient/notifications`
-
-Requires patient bearer token.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/` | Get notifications. |
-| `POST` | `/` | Create notification. |
-| `PATCH` | `/mark-all-read` | Mark all read. |
-| `DELETE` | `/clear-all` | Clear all. |
-| `PATCH` | `/:notificationId/read` | Mark one read. |
-| `DELETE` | `/:notificationId` | Clear one. |
-
-## 12. Database Models
+| Model file | Sequelize model | Database table |
+|---|---|---|
+| `userModel.js` | `User` | `users` |
+| `organizationModel.js` | `Organization` | `organizations` |
+| `patientModel.js` | `Patient` | `patients` |
+| `taskModel.js` | `Task` | `tasks` |
+| `woundCaseModel.js` | `WoundCase` | `wound_cases` |
+| `patientHandoffModel.js` | `PatientHandoff` | `patient_handoffs` |
+| `notificationModel.js` | `Notification` | `notifications` |
+| `subscriptionModel.js` | `Subscription` | `subscriptions` |
 
 ### `users`
 
-Purpose: Accounts for doctors, nurses, patients, admins, and super admins.
+Stores clinical users, patients, admins, account-review state, credentials, settings, and one current FCM token.
 
-Important fields:
+Important field groups:
 
 - Identity: `id`, `name`, `first_name`, `last_name`, `email`, `phone_number`, `profile_photo_url`.
-- Organization/review: `organization_hospital`, `organization_code`, `request_accepted`, `request_status`, `reviewed_by`, `reviewed_at`, `rejection_reason`.
-- Role: `role`.
-- Profile: `shift`, `professional_title`.
-- Auth: `password_hash`, `verification_code`, `verification_code_expires_at`, `verification_purpose`, `is_email_verified`, `last_login_at`, `auth_token`.
-- Settings: `notification_preferences`, `app_settings`, `security_settings`, `active_sessions`.
-- Status: `account_status`, `deleted_at`, `terms_accepted`, `terms_accepted_at`.
+- Organization: `organization_id`, `organization_hospital`, `organization_code`.
+- Review: `request_accepted`, `request_status`, `reviewed_by`, `reviewed_at`, `rejection_reason`.
+- Access: `role`, `password_hash`, `auth_token`, `account_status`, `deleted_at`.
+- Verification: `verification_code`, `verification_code_expires_at`, `verification_purpose`, `is_email_verified`.
+- Push: `fcm_token`, `fcm_platform`, `fcm_token_updated_at`.
+- Preferences: `notification_preferences`, `app_settings`, `security_settings`, `active_sessions`.
+- Compliance/profile: `terms_accepted`, `terms_accepted_at`, `shift`, `professional_title`, `last_login_at`.
 
 Enums:
 
-```txt
+```text
 role: doctor | nurse | patient | user | admin | super_admin
 request_status: none | pending | accepted | rejected
 verification_purpose: signup | signin | reset_password
+fcm_platform: android | ios | web
 account_status: active | signed_out | deactivated | deleted
+```
+
+### `organizations`
+
+Stores organization identity, approval/suspension state, admin ownership, and subscription state.
+
+Key fields: `id`, `name`, `domain`, `code`, `admin_user_id`, `status`, `suspension_reason`, `suspension_note`, `suspended_by`, `suspended_at`, `decline_reason`, `declined_by`, `declined_at`, `subscription_plan`, `subscription_status`, and `metadata`.
+
+```text
+status: active | pending | suspended | declined
+subscription_status: active | trialing | expired | cancelled
 ```
 
 ### `patients`
 
-Purpose: Patient demographic and assignment data.
+Stores demographics, clinical summary, current assignment, creator, and archive state.
 
-Important fields:
+Key fields: `id`, `nurse_id`, `doctor_id`, `assigned_by`, `assigned_to`, `first_name`, `last_name`, `date_of_birth`, `gender`, `mrn`, `address`, `phone_number`, `room`, `wound_type`, `primary_staff`, `backup_staff`, `primary_diagnosis`, `allergies_notes`, `status`, `archived_at`, and `archived_by`.
 
-- Assignment: `nurse_id`, `doctor_id`, `assigned_by`, `assigned_to`.
-- Demographics/clinical: `id`, `first_name`, `last_name`, `date_of_birth`, `gender`, `mrn`, `address`, `phone_number`, `room`, `wound_type`, `primary_staff`, `backup_staff`, `primary_diagnosis`, `allergies_notes`.
+```text
+gender: male | female | other
+status: active | archived
+```
 
-Assignment meaning:
+Assignment rules:
 
-- `assigned_by` stores the `users.id` of the nurse or doctor who created the patient. Reassignment does not change it.
-- `assigned_to` stores the `users.id` of the current primary assignee.
-- Assigning to a nurse updates `nurse_id` and `assigned_to`.
-- Assigning to a doctor updates `doctor_id` and `assigned_to`.
+- `assigned_by` records the user who originally created/assigned the patient.
+- `assigned_to` records the current primary assignee.
+- Nurse assignment uses `nurse_id`; doctor assignment uses `doctor_id`.
 
 ### `tasks`
 
-Purpose: Task assignment and completion tracking.
+Key fields: `id`, `title`, `description`, `task_type`, `priority`, `status`, `patient_id`, `wound_case`, `assigned_by`, `assigned_to`, `due_date`, `due_time`, `task_notes`, `work_notes`, and `completed_at`.
 
-Important fields:
-
-- `id`, `title`, `description`, `task_type`, `priority`, `status`, `patient_id`, `wound_case`, `assigned_by`, `assigned_to`, `due_date`, `due_time`, `task_notes`, `work_notes`, `completed_at`.
-
-Enums:
-
-```txt
+```text
 task_type: all | wound | documentation | follow_up | other
 priority: low | medium | high
 status: pending | completed | cancelled
@@ -658,208 +366,837 @@ status: pending | completed | cancelled
 
 ### `wound_cases`
 
-Purpose: Wound record and nested clinical data.
+Stores wound identity and current measurements plus JSON arrays for the clinical timeline.
 
-Important fields:
+Key fields: `id`, `patient_id`, `wound_type`, `severity_stage`, `pain_score`, `body_location`, `wound_etiology`, `status`, `healing_progress`, `length_cm`, `width_cm`, `depth_cm`, `images`, `measurements`, `updates`, `clinical_notes`, `reports`, `notes`, and `last_updated_at`.
 
-- `id`, `patient_id`, `wound_type`, `severity_stage`, `pain_score`, `body_location`, `wound_etiology`, `status`, `healing_progress`, `length_cm`, `width_cm`, `depth_cm`, `images`, `measurements`, `updates`, `clinical_notes`, `reports`, `notes`, `last_updated_at`.
-
-Enums:
-
-```txt
+```text
 status: active | monitoring | healing | healed | closed
 ```
 
 ### `patient_handoffs`
 
-Purpose: Shift/staff patient handoff records.
+Key fields: `id`, `from_nurse_id`, `to_nurse_id`, `patient_ids`, `pending_task_ids`, `general_notes`, `per_patient_notes`, `shift_label`, `shift_ends_at`, `status`, `completed_at`, and `summary`.
 
-Important fields:
-
-- `id`, `from_nurse_id`, `to_nurse_id`, `patient_ids`, `pending_task_ids`, `general_notes`, `per_patient_notes`, `shift_label`, `shift_ends_at`, `status`, `completed_at`, `summary`.
-
-Enums:
-
-```txt
+```text
 status: draft | ready | completed | cancelled
 ```
 
+Doctor handoff logic also uses these generic `from_nurse_id`/`to_nurse_id` columns for user IDs.
+
 ### `notifications`
 
-Purpose: User notifications with read/clear state.
+Key fields: `id`, `user_id`, `type`, `title`, `message`, `action_label`, `action_url`, `metadata`, `read_at`, and `cleared_at`.
 
-Important fields:
-
-- `id`, `user_id`, `type`, `title`, `message`, `action_label`, `action_url`, `metadata`, `read_at`, `cleared_at`.
-
-Enums:
-
-```txt
-type: wound_update | doctor_instruction | new_task | patient_assigned | task_completed | task_reassigned | login_alert | report_generated | system
+```text
+type: wound_update | doctor_instruction | new_task | patient_assigned |
+      task_completed | task_reassigned | login_alert | report_generated | system
 ```
+
+An `afterCreate` model hook attempts FCM delivery after each `Notification.create(...)`.
 
 ### `subscriptions`
 
-Purpose: Plan, billing, subscription status, and usage.
+Key fields: `id`, `user_id`, `plan_code`, `plan_name`, `billing_provider`, `provider_subscription_id`, `currency`, `amount`, `interval`, `status`, `usage`, `features`, `trial_ends_at`, `current_period_start`, `current_period_end`, `cancelled_at`, and `metadata`.
 
-Important fields:
-
-- `id`, `user_id`, `plan_code`, `plan_name`, `billing_provider`, `provider_subscription_id`, `currency`, `amount`, `interval`, `status`, `usage`, `features`, `trial_ends_at`, `current_period_start`, `current_period_end`, `cancelled_at`, `metadata`.
-
-Enums:
-
-```txt
+```text
 plan_code: free | basic | professional | organization
 billing_provider: manual | apple_pay | google_pay | app_store
 interval: forever | month
 status: active | trialing | cancelled | expired
 ```
 
-## 13. Database Relationships
+### Relationship map
 
-```txt
-patients.nurse_id -> users.id
-patients.doctor_id -> users.id
-patients.assigned_by -> users.id
-patients.assigned_to -> users.id
-tasks.patient_id -> patients.id
-tasks.assigned_by -> users.id
-tasks.assigned_to -> users.id
-wound_cases.patient_id -> patients.id
-patient_handoffs.from_nurse_id -> users.id
-patient_handoffs.to_nurse_id -> users.id
-notifications.user_id -> users.id
-subscriptions.user_id -> users.id
+```text
+users.organization_id           -> organizations.id
+users.reviewed_by               -> users.id
+patients.nurse_id               -> users.id
+patients.doctor_id              -> users.id
+patients.assigned_by            -> users.id
+patients.assigned_to            -> users.id
+patients.archived_by            -> users.id
+tasks.patient_id                -> patients.id
+tasks.assigned_by               -> users.id
+tasks.assigned_to               -> users.id
+wound_cases.patient_id          -> patients.id
+patient_handoffs.from_nurse_id  -> users.id
+patient_handoffs.to_nurse_id    -> users.id
+notifications.user_id           -> users.id
+subscriptions.user_id           -> users.id
 ```
 
-## 14. Patient App Context Resolution
+The models define column-level references but do not define Sequelize `hasMany`, `belongsTo`, or eager-loading associations.
 
-Patient app endpoints identify the patient record using one of these:
+## 9. API conventions
 
-- `patient_id` query parameter.
-- `patientId` query parameter.
-- `mrn` query parameter.
-- `req.user.app_settings.patient_profile.patient_id_mrn`.
-- `req.user.app_settings.patient_profile.mrn`.
+### Base URL and headers
 
-If no matching `patients` row is found, patient app endpoints return:
+Local base URL:
+
+```text
+http://localhost:3000
+```
+
+Typical JSON headers:
+
+```http
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer <token>
+```
+
+Upload endpoints require `multipart/form-data`.
+
+### Error format
+
+Most controllers return:
 
 ```json
 {
-  "message": "Patient profile not found. Make sure patient_id_mrn in users.app_settings matches patients.mrn"
+  "message": "Human-readable error",
+  "error": "Optional technical detail"
 }
 ```
 
-## 15. File Uploads
+Validation generally returns `400`, authentication returns `401`, authorization returns `403`, missing resources return `404`, conflicts often return `409`, external delivery failures can return `502`/`503`, and unexpected failures return `500`.
 
-The project supports local disk image uploads through Multer. Uploaded files are written under `uploads/` and are served publicly by Express at `/uploads`.
+### Common resource payloads
 
-Runtime upload folders:
+Patient fields commonly include `first_name`, `last_name`, `date_of_birth`, `gender`, `mrn`, `address`, `phone_number`, `room`, `wound_type`, `primary_staff`, `backup_staff`, `primary_diagnosis`, `allergies_notes`, and assignment IDs.
 
-| Folder | Used By | Public URL Prefix |
-| --- | --- | --- |
-| `uploads/profile-photos/` | Auth profile image upload and account creation profile photos. | `/uploads/profile-photos/...` |
-| `uploads/reports/` | Generated wound report PDFs. | `/uploads/reports/...` |
-| `uploads/voice-dictations/` | Wound clinical note voice dictation audio files. | `/uploads/voice-dictations/...` |
-| `uploads/wound-images/` | Wound case image upload. | `/uploads/wound-images/...` |
+Task fields commonly include `title`, `description`, `task_type`, `priority`, `status`, `patient_id`, `wound_case`, `assigned_by`, `assigned_to`, `due_date`, `due_time`, `task_notes`, and `work_notes`.
 
-Profile photo uploads:
+Wound-case fields commonly include `patient_id`, `wound_type`, `severity_stage`, `pain_score`, `body_location`, `wound_etiology`, `status`, `healing_progress`, `length_cm`, `width_cm`, `depth_cm`, and `notes`. Timeline data is stored inside JSON arrays.
 
-| Endpoint | Auth | Form-data File Keys | Max Size | Behavior |
-| --- | --- | --- | --- | --- |
-| `POST /api/auth/upload-image` | Bearer token required | `image`, `file`, `photo`, `profile_photo`, `profilePhoto` | 15 MB | Saves image and updates only `req.user.profile_photo_url`. |
-| `POST /api/auth/create-account` | Public | Same keys | 15 MB | Optional image is saved and assigned to the newly created user's `profile_photo_url`. |
-| `POST /api/auth/create-organization-account` | Public | Same keys | 15 MB | Optional image is saved and assigned to the newly created organization request user's `profile_photo_url`. |
+Notification creation supports `user_id`, `type`, `title`, `message`, `action_label`, `action_url`, and `metadata`. `userId`, `actionLabel`, and `actionUrl` aliases are accepted by the general controller.
 
-Wound image uploads:
+## 10. Complete endpoint catalog
 
-| Endpoint | Auth | Form-data File Keys | Limits | Behavior |
-| --- | --- | --- | --- | --- |
-| `PATCH /api/wound-cases/add-wound-image/:id` | Bearer token required, `nurse` role | `image`, `images`, `file`, `files`, `wound_image`, `wound_images` | 20 MB per file, up to 10 files | Saves image files and appends their public URLs/metadata to the wound case `images` JSON array. |
+The catalog below lists all 209 route declarations currently mounted by `app.js`.
 
-Voice dictation uploads:
+### 10.1 Common authentication — `/api/auth`
 
-| Endpoint | Auth | Form-data File Keys | Max Size | Behavior |
-| --- | --- | --- | --- | --- |
-| `POST /api/wound-cases/save-voice-dictation/:id` | Bearer token required, `nurse` role | `audio`, `voice`, `file`, `voice_file`, `voiceFile`, `audio_file`, `audioFile` | 25 MB | Saves an audio file and/or transcript as a `voice` clinical note. |
-| `POST /api/wound-cases/transcribe-voice-dictation/:id/:noteId?` | Bearer token required, `nurse` role | Same keys when uploading a new file | 25 MB | Sends uploaded audio, or an existing local note audio file when `noteId` is provided, to the configured Whisper service and saves the returned text as a `voice` clinical note. |
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/me` | Bearer | Return the authenticated user. |
+| `POST` | `/create-account` | Public | Create a doctor, nurse, or patient account; supports an optional profile image and FCM fields. |
+| `POST` | `/create-organization-account` | Public | Create an organization-linked account request. |
+| `POST` | `/upload-image` | Bearer | Upload and save the authenticated user's profile image. |
+| `PUT` | `/accept-organization-request` | Public | Accept an organization request by email. |
+| `POST` | `/signin` | Public | Sign in using email/password and return an access token. |
+| `PUT` | `/fcm-token` | Bearer | Register or refresh the authenticated user's FCM token. |
+| `DELETE` | `/fcm-token` | Bearer | Remove the authenticated user's FCM token. |
+| `POST` | `/verify-code` | Public | Verify a signup/sign-in verification code. |
+| `POST` | `/forgot-password` | Public | Generate and email a reset code. |
+| `POST` | `/reset-password` | Public | Reset a password using the reset code. |
+| `PUT` | `/change-role` | Public | Change a user's role by email. |
 
-Report PDF generation:
+Common signup accepts snake-case and camel-case aliases for names, phone, confirmation, terms, profile URL, and FCM fields. Allowed signup/change-role values are `doctor`, `nurse`, and `patient`. Sign-in requires `request_status=accepted` and rejects deactivated/deleted accounts.
 
-| Endpoint | Auth | Behavior |
-| --- | --- | --- |
-| `GET /api/wound-cases/download-report/:id/:reportId` | Bearer token required, `nurse` role | Builds a PDF from wound case/report data, saves it under `uploads/reports/`, updates the report metadata with `url`, `file_url`, `file_path`, `file_size`, and returns `download_url`. |
+### 10.2 Admin — `/api/admin`
 
-AI report generation:
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/login` | Public | Sign in an `admin` or `super_admin`. |
+| `GET` | `/organizations` | Public | List/filter organizations for admin review. |
+| `GET` | `/organizations/:organizationCode/users` | Public | List organization clinical users. |
 
-| Endpoint | Auth | Behavior |
-| --- | --- | --- |
-| `POST /api/wound-cases/generate-report/:id` | Bearer token required, `nurse` role | Sends structured wound case data to OpenAI, saves the AI summary/report data, and requires `OPENAI_API_KEY`. |
-| `POST /api/wound-cases/generate-ai-report/:id` | Bearer token required, `nurse` role | Alias for the same AI-backed report generation behavior. |
+`adminAuthMiddleware` exists but is not applied in `adminRoutes.js`.
 
-All upload middleware rejects non-image MIME types. Upload URLs use the current request host, for example:
+### 10.3 Nurse dashboard — `/api/dashboard`
 
-```txt
-http://localhost:3000/uploads/profile-photos/filename.jpg
-http://localhost:3000/uploads/reports/filename.pdf
-http://localhost:3000/uploads/voice-dictations/filename.m4a
-http://localhost:3000/uploads/wound-images/filename.jpg
+All endpoints require a nurse bearer token.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/home` | Nurse | Combined home-dashboard response. |
+| `GET` | `/stats` | Nurse | Counts for assigned patients, wounds, high-priority tasks, tasks, and notifications. |
+| `GET` | `/today-tasks` | Nurse | Tasks due today for the nurse's scope. |
+| `GET` | `/assigned-patients` | Nurse | Patients assigned to the nurse. |
+| `GET` | `/recent-updates` | Nurse | Recent wound/task activity. |
+
+### 10.4 Nurse patients — `/api/patients`
+
+All endpoints require a nurse bearer token and are scoped to `req.user.id`.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/create-patient` | Nurse | Create a patient assigned by/to the current nurse. |
+| `GET` | `/get-patient` | Nurse | List the nurse's active patients. |
+| `GET` | `/get-patient/:id` | Nurse | Get one nurse-owned patient. |
+| `PUT` | `/update-patient/:id` | Nurse | Update a nurse-owned patient. |
+| `PATCH` | `/reassign-patient/:id` | Nurse | Reassign a patient to a nurse or doctor. |
+| `DELETE` | `/delete-patient/:id` | Nurse | Permanently delete the patient and related wound cases/tasks. |
+
+### 10.5 Nurse tasks — `/api/tasks`
+
+All endpoints require a nurse bearer token and enforce nurse/patient scope in the controller.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/create-task` | Nurse | Create a task. |
+| `GET` | `/get-task` | Nurse | List scoped tasks with optional filters. |
+| `GET` | `/get-task/:id` | Nurse | Get one scoped task. |
+| `PUT` | `/update-task/:id` | Nurse | Update a scoped task. |
+| `PATCH` | `/complete-task/:id` | Nurse | Mark a task completed. |
+| `PATCH` | `/reassign-task/:id` | Nurse | Change the task assignee. |
+| `DELETE` | `/delete-task/:id` | Nurse | Delete a task. |
+
+### 10.6 Nurse wound cases — `/api/wound-cases`
+
+All endpoints require a nurse bearer token and scope patient/wound access to the nurse.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/create-wound-case` | Nurse | Create a wound case for a scoped patient. |
+| `GET` | `/get-wound-case` | Nurse | List scoped wound cases. |
+| `GET` | `/get-wound-case/:id` | Nurse | Get one scoped wound case. |
+| `GET` | `/get-timeline/:id` | Nurse | Get formatted wound timeline entries. |
+| `GET` | `/get-images/:id` | Nurse | Get wound images. |
+| `GET` | `/get-measurements/:id` | Nurse | Get measurement history. |
+| `GET` | `/get-notes/:id` | Nurse | Get clinical notes. |
+| `GET` | `/get-reports/:id` | Nurse | Get report metadata. |
+| `GET` | `/preview-report/:id/:reportId` | Nurse | Return report preview data. |
+| `GET` | `/download-report/:id/:reportId` | Nurse | Generate/save a PDF and return download information. |
+| `PUT` | `/update-wound-case/:id` | Nurse | Update wound-case fields and optional nested arrays. |
+| `PATCH` | `/add-wound-update/:id` | Nurse | Append a wound update/timeline item. |
+| `PATCH` | `/add-wound-image/:id` | Nurse | Upload up to ten wound images or append image metadata/URLs. |
+| `DELETE` | `/delete-wound-image/:id/:imageId` | Nurse | Remove image metadata from a wound case. |
+| `PATCH` | `/add-measurement/:id` | Nurse | Append a measurement record. |
+| `PATCH` | `/add-note/:id` | Nurse | Append a manual/structured clinical note. |
+| `POST` | `/save-voice-dictation/:id` | Nurse | Save an uploaded/local audio reference and/or supplied transcript as a voice note. |
+| `POST` | `/transcribe-voice-dictation/:id/:noteId?` | Nurse | Transcribe uploaded or previously saved local audio and save the transcript. |
+| `POST` | `/generate-soap-note/:id` | Nurse | Generate an AI SOAP note from narrative and wound facts. |
+| `POST` | `/generate-report/:id` | Nurse | Generate and store an AI-assisted wound report. |
+| `POST` | `/generate-ai-report/:id` | Nurse | Alias for the same report-generation controller. |
+| `PATCH` | `/add-report/:id` | Nurse | Append manually supplied report metadata. |
+| `PATCH` | `/share-report/:id/:reportId` | Nurse | Mark/share a report and record sharing metadata. |
+| `DELETE` | `/delete-wound-case/:id` | Nurse | Delete a wound case. |
+
+### 10.7 Common profile/settings — `/api/profile`
+
+These routes currently identify users through URL parameters and have no route-level bearer middleware.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/get-profile/:id` | Public | Get user profile and related counts. |
+| `PUT` | `/update-profile/:id` | Public | Update profile fields. |
+| `GET` | `/security-settings/:id` | Public | Get security settings/session summary. |
+| `PATCH` | `/change-password/:id` | Public | Change password after verifying the current password. |
+| `PATCH` | `/sign-out-all-devices/:id` | Public | Clear token/session state. |
+| `GET` | `/notification-preferences/:id` | Public | Get notification preferences. |
+| `PATCH` | `/notification-preferences/:id` | Public | Merge notification-preference changes. |
+| `GET` | `/app-settings/:id` | Public | Get app settings. |
+| `PATCH` | `/app-settings/:id` | Public | Merge app-setting changes. |
+| `POST` | `/patient-handoff/:id` | Public | Initiate a simple patient handoff. |
+| `POST` | `/sign-out/:id` | Public | Mark account signed out and clear auth token. |
+| `DELETE` | `/delete-account/:id` | Public | Permanently delete user-related data. |
+
+### 10.8 Nurse handoffs — `/api/handoffs`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/patients/:nurseId` | Public | List patients selectable for handoff. |
+| `GET` | `/available-nurses/:nurseId` | Public | List possible receiving nurses. |
+| `POST` | `/create` | Public | Create a handoff draft. |
+| `GET` | `/get/:id` | Public | Get handoff details/review. |
+| `PATCH` | `/select-nurse/:id` | Public | Set the receiving nurse. |
+| `PATCH` | `/notes/:id` | Public | Add general/per-patient notes. |
+| `PATCH` | `/confirm/:id` | Public | Confirm the handoff and update assignments. |
+| `GET` | `/success/:id` | Public | Get completed handoff summary. |
+
+### 10.9 Common notifications — `/api/notifications`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/get-notifications/:userId` | Public | List a user's uncleared notifications. |
+| `GET` | `/get-notifications` | Public | List notifications using `user_id`/`userId` and tab/status query filters. |
+| `POST` | `/create-notification` | Public | Create a notification for any existing user and trigger push delivery. |
+| `PATCH` | `/mark-read/:id` | Public | Mark one notification read. |
+| `PATCH` | `/mark-all-read/:userId` | Public | Mark a user's uncleared notifications read. |
+| `DELETE` | `/clear/:id` | Public | Soft-clear one notification using `cleared_at`. |
+| `DELETE` | `/clear-all/:userId` | Public | Soft-clear all notifications for a user. |
+
+Notification list tabs are `all`, `unread`, and `read`. Create type defaults to `system`.
+
+### 10.10 Subscriptions — `/api/subscriptions`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/plans` | Public | List Free, Basic, Professional, and Organization plans. |
+| `GET` | `/plans/:planCode` | Public | Get one plan and configured App Store product ID. |
+| `POST` | `/checkout-session` | Public | Build provider-specific checkout/session metadata. |
+| `POST` | `/subscribe` | Public | Create or update a manual/payment-provider subscription. |
+| `POST` | `/apple/verify` | Public | Parse/verify a StoreKit 2 signed transaction and upsert subscription state. |
+| `POST` | `/apple/restore` | Public | Verify restored StoreKit transactions and restore the newest known plan. |
+| `GET` | `/current/:userId` | Public | Get current subscription and free fallback. |
+| `GET` | `/manage/:userId` | Public | Return current plan and management options. |
+| `PATCH` | `/usage/:userId` | Public | Merge usage counters. |
+| `PATCH` | `/cancel/:userId` | Public | Mark the current subscription cancelled. |
+
+Built-in monthly prices are CHF 19 for Basic, CHF 49 for Professional, and CHF 299 for Organization; Free has no recurring charge. These values are application data, not authoritative App Store pricing.
+
+### 10.11 Doctor authentication — `/api/doctor/auth`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/signup/personal-information` | Public | Validate/echo doctor personal-information step. |
+| `POST` | `/signup/professional-credentials` | Public | Validate/echo professional-credentials step. |
+| `POST` | `/signup/set-password` | Public | Combine signup data and create/update the doctor account. |
+| `POST` | `/signin` | Public | Doctor-only email/password sign-in. |
+| `POST` | `/forgot-password` | Public | Find doctor by email/phone/identifier and send reset code. |
+| `POST` | `/verify-otp` | Public | Verify doctor reset OTP. |
+| `POST` | `/reset-password` | Public | Set new doctor password after OTP verification. |
+
+### 10.12 Doctor management — `/api/doctor`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/home` | Public | Doctor home/dashboard data. |
+| `GET` | `/patients` | Doctor | Authenticated doctor's patient list. |
+| `GET` | `/patients/:patientId` | Public | Patient details for doctor UI. |
+| `GET` | `/wound-cases/:woundCaseId` | Public | Wound case detail for doctor review. |
+| `POST` | `/wound-cases/:woundCaseId/instructions` | Public | Append doctor instructions to clinical notes. |
+| `PUT` | `/wound-cases/:woundCaseId/instructions/:instructionId` | Public | Update doctor instructions. |
+| `DELETE` | `/wound-cases/:woundCaseId/instructions/:instructionId` | Public | Delete doctor instructions. |
+| `PATCH` | `/tasks/:taskId/complete` | Public | Mark a task complete. |
+
+Only `GET /patients` has route-level doctor authentication in this route module.
+
+### 10.13 Doctor-owned patients — `/api/doctor/patients`
+
+All endpoints require a doctor bearer token and enforce ownership.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/` | Doctor | Create a patient owned/assigned by the authenticated doctor. |
+| `GET` | `/ss` | Doctor | List patients owned by the authenticated doctor. |
+| `GET` | `/:patientId` | Doctor | Get one owned patient. |
+| `PUT` | `/:patientId` | Doctor | Replace/update an owned patient. |
+| `PATCH` | `/:patientId` | Doctor | Partially update an owned patient. |
+| `PATCH` | `/:patientId/reassign` | Doctor | Reassign an owned patient to a nurse or doctor. |
+| `DELETE` | `/:patientId` | Doctor | Permanently delete owned patient dependencies. |
+
+The list path is literally `/ss` in the current route file.
+
+### 10.14 Doctor-owned wound cases — `/api/doctor/wound-cases`
+
+All endpoints require a doctor bearer token and constrain access through doctor-owned patients.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/` | Doctor | Create wound case for an owned patient. |
+| `GET` | `/` | Doctor | List wound cases for owned patients. |
+| `GET` | `/:woundCaseId` | Doctor | Get one owned wound case. |
+| `PUT` | `/:woundCaseId` | Doctor | Update an owned wound case. |
+| `PATCH` | `/:woundCaseId` | Doctor | Partially update an owned wound case. |
+| `DELETE` | `/:woundCaseId` | Doctor | Delete an owned wound case. |
+
+### 10.15 Doctor tasks — `/api/doctor/tasks`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/dashboard` | Public | Task counts, tabs, and dashboard items. |
+| `GET` | `/options` | Public | Patient/assignee options for task creation. |
+| `GET` | `/` | Public | List/filter tasks. |
+| `POST` | `/` | Public | Create a task. |
+| `GET` | `/:taskId` | Public | Get enriched task details. |
+| `PUT` | `/:taskId` | Public | Update a task. |
+| `PATCH` | `/:taskId/complete` | Public | Complete a task. |
+| `GET` | `/:taskId/reassign-options` | Public | Get possible reassignees. |
+| `PATCH` | `/:taskId/reassign` | Public | Reassign a task. |
+| `DELETE` | `/:taskId` | Public | Delete a task. |
+
+### 10.16 Doctor wound details — `/api/doctor/wound-details`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/:woundCaseId/images` | Public | Images tab data. |
+| `GET` | `/:woundCaseId/measurements` | Public | Measurement history. |
+| `POST` | `/:woundCaseId/healing-progress` | Public | Calculate/update healing progress. |
+| `GET` | `/:woundCaseId/notes` | Public | Clinical notes/instructions. |
+| `GET` | `/:woundCaseId/reports` | Public | Report list. |
+| `POST` | `/:woundCaseId/reports/generate` | Public | Generate report metadata. |
+| `GET` | `/:woundCaseId/reports/:reportId` | Public | Get one report. |
+| `POST` | `/:woundCaseId/reports/:reportId/share` | Public | Share/update report sharing state. |
+
+### 10.17 Doctor profile/settings — `/api/doctor/profile-settings`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/:doctorId/profile` | Public | Get doctor profile and counts. |
+| `PUT` | `/:doctorId/profile` | Public | Update doctor profile. |
+| `GET` | `/:doctorId/security` | Public | Get security/session settings. |
+| `PATCH` | `/:doctorId/security/change-password` | Public | Change doctor password. |
+| `PATCH` | `/:doctorId/security/sign-out-all-devices` | Public | Clear doctor sessions/token. |
+| `GET` | `/:doctorId/notifications` | Public | Get doctor notification preferences. |
+| `PATCH` | `/:doctorId/notifications` | Public | Merge notification preferences. |
+| `GET` | `/:doctorId/app-settings` | Public | Get doctor app settings. |
+| `PATCH` | `/:doctorId/app-settings` | Public | Merge doctor app settings. |
+| `GET` | `/:doctorId/handoff` | Public | Get handoff summary. |
+| `POST` | `/:doctorId/handoff` | Public | Initiate doctor handoff. |
+| `POST` | `/:doctorId/sign-out` | Public | Sign doctor out. |
+| `DELETE` | `/:doctorId/delete-account` | Public | Permanently delete doctor account dependencies. |
+
+### 10.18 Doctor patient handoff — `/api/doctor/patient-handoff`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/:doctorId/patients` | Public | List selectable doctor patients. |
+| `GET` | `/:doctorId/available-staff` | Public | List receiving nurses/doctors. |
+| `POST` | `/draft` | Public | Create a doctor handoff draft. |
+| `GET` | `/:handoffId` | Public | Get handoff details/review. |
+| `PATCH` | `/:handoffId/select-staff` | Public | Set receiving staff member. |
+| `PATCH` | `/:handoffId/notes` | Public | Add handoff notes. |
+| `PATCH` | `/:handoffId/confirm` | Public | Confirm handoff and update assignments. |
+| `GET` | `/:handoffId/success` | Public | Get completed handoff summary. |
+
+### 10.19 Doctor notifications — `/api/doctor/notifications`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/:doctorId` | Public | Get doctor notification tabs/counts. |
+| `POST` | `/:doctorId` | Public | Create doctor notification and trigger push. |
+| `PATCH` | `/:doctorId/mark-all-read` | Public | Mark all doctor notifications read. |
+| `DELETE` | `/:doctorId/clear-all` | Public | Soft-clear all doctor notifications. |
+| `PATCH` | `/:doctorId/:notificationId/read` | Public | Mark one doctor notification read. |
+| `DELETE` | `/:doctorId/:notificationId` | Public | Soft-clear one doctor notification. |
+
+### 10.20 Patient authentication — `/api/patient/auth`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/signup/personal-information` | Public | Validate/echo patient personal-information step. |
+| `POST` | `/signup/professional-credentials` | Public | Validate/echo patient profile/medical-information step. |
+| `POST` | `/signup/professional-information` | Public | Alias for professional credentials. |
+| `POST` | `/signup/set-password` | Public | Combine signup data and create/update patient user. |
+| `POST` | `/signin` | Public | Patient-only email/password sign-in. |
+| `POST` | `/forgot-password` | Public | Generate and email patient reset code. |
+| `POST` | `/reset-password` | Public | Reset patient password with OTP/code. |
+
+### 10.21 Patient app — `/api/patient/app`
+
+All endpoints require a patient bearer token. Patient context is resolved from query parameters or the user's `app_settings.patient_profile` configuration.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/dashboard` | Patient | Patient dashboard and wound summary. |
+| `GET` | `/healing-progress` | Patient | Healing progress for the default/latest wound case. |
+| `GET` | `/healing-progress/:woundCaseId` | Patient | Healing progress for a selected wound case. |
+| `GET` | `/reports` | Patient | Reports across the patient's wound cases. |
+| `GET` | `/reports/:reportId/download` | Patient | Get report download information. |
+| `GET` | `/reports/:reportId` | Patient | Get report details. |
+| `GET` | `/wound-profile/:woundCaseId` | Patient | Wound profile summary. |
+| `GET` | `/wound-profile/:woundCaseId/timeline` | Patient | Wound timeline. |
+| `GET` | `/wound-profile/:woundCaseId/images` | Patient | Images/before-and-after data. |
+| `GET` | `/wound-profile/:woundCaseId/measurements` | Patient | Measurement history. |
+| `GET` | `/wound-profile/:woundCaseId/measures` | Patient | Alias for measurements. |
+| `GET` | `/wound-profile/:woundCaseId/notes` | Patient | Clinical notes/instructions. |
+| `GET` | `/wound-profile/:woundCaseId/reports` | Patient | Reports for one wound case. |
+| `GET` | `/wound-profile/:woundCaseId/reports/:reportId/preview` | Patient | Preview report metadata/content. |
+| `GET` | `/wound-profile/:woundCaseId/reports/:reportId/download` | Patient | Download report information. |
+| `POST` | `/wound-profile/:woundCaseId/reports/:reportId/share` | Patient | Share report/update sharing metadata. |
+| `GET` | `/wound-profile/:woundCaseId/reports/:reportId` | Patient | Get wound report details. |
+
+Patient lookup checks `patient_id`, `patientId`, or `mrn` query parameters, then `app_settings.patient_profile.patient_id_mrn` or `.mrn`.
+
+### 10.22 Patient profile/settings — `/api/patient/profile`
+
+All endpoints require a patient bearer token.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/` | Patient | Get combined user/linked-patient profile. |
+| `GET` | `/edit-profile` | Patient | Get editable profile data. |
+| `PATCH` | `/edit-profile` | Patient | Update user and linked-patient data. |
+| `GET` | `/security-settings` | Patient | Get security/session settings. |
+| `PATCH` | `/change-password` | Patient | Change password. |
+| `PATCH` | `/sign-out-all-devices` | Patient | Clear session/token state. |
+| `GET` | `/notifications` | Patient | Get notification preferences. |
+| `PATCH` | `/notifications` | Patient | Merge notification preferences. |
+| `GET` | `/app-settings` | Patient | Get app settings. |
+| `PATCH` | `/app-settings` | Patient | Merge app settings. |
+| `POST` | `/sign-out` | Patient | Sign out current account. |
+| `DELETE` | `/delete-account` | Patient | Permanently delete user and linked patient dependencies. |
+
+### 10.23 Patient notifications — `/api/patient/notifications`
+
+All endpoints require a patient bearer token. The recipient is always the authenticated user.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/` | Patient | Get notification tabs, sections, and counts. |
+| `POST` | `/` | Patient | Create self-notification and trigger push. |
+| `PATCH` | `/mark-all-read` | Patient | Mark all own notifications read. |
+| `DELETE` | `/clear-all` | Patient | Soft-clear all own notifications. |
+| `PATCH` | `/:notificationId/read` | Patient | Mark one own notification read. |
+| `DELETE` | `/:notificationId` | Patient | Soft-clear one own notification. |
+
+## 11. Core workflows
+
+### 11.1 Common account creation
+
+`POST /api/auth/create-account` accepts:
+
+- Required: first name, last name, email, phone number, role, password, confirmation, and accepted terms.
+- Optional: profile photo/file or profile URL, `fcm_token`, and `fcm_platform`.
+- Roles: `doctor`, `nurse`, or `patient`.
+- FCM platforms: `android`, `ios`, or `web`.
+
+It validates uniqueness and password confirmation, resolves optional organization data, hashes the password, creates the user, and sends a signup code by SMTP.
+
+`POST /api/auth/create-organization-account` follows the same basic flow and additionally accepts organization/hospital name and organization code, creating an account request for review.
+
+### 11.2 Common sign-in
+
+Request:
+
+```http
+POST /api/auth/signin
+Content-Type: application/json
+
+{
+  "email": "nurse@example.com",
+  "password": "password123"
+}
 ```
 
-The `uploads/` directory is ignored by git. Production deployments should replace local disk uploads with durable object storage if files need to survive server replacement.
+Successful sign-in requires:
 
-## 16. Postman
+- A matching email/password.
+- `request_status` equal to `accepted`.
+- `account_status` not equal to `deactivated` or `deleted`.
 
-Postman files are stored in `postman/`.
+It updates `last_login_at`, sets `account_status=active`, creates a signed token, stores the token in `auth_token`, and returns public user data.
 
-| File | Purpose |
-| --- | --- |
-| `AI-Enabled-Wound-APIs.postman_collection.json` | Main API collection. |
-| `AI-Enabled-Wound-APIs.postman_environment.json` | Main API environment. |
-| `AI-Enabled-Wound-Doctor-APIs.postman_collection.json` | Doctor API collection. |
-| `AI-Enabled-Wound-Doctor-APIs.postman_environment.json` | Doctor API environment. |
-| `README.md` | Postman usage notes. |
+Current implementation issue: if `fcm_token` is included, `signin` calls `registerPushToken(...)`, but that helper is not defined/imported in `authController.js`. Until fixed, sign-in with an FCM token can return `500`. Sign in without the token, then call the authenticated `PUT /api/auth/fcm-token` endpoint.
 
-## 17. Migrations
+Detailed examples are available in [Sign-in and Create Notification APIs](SIGNIN_AND_CREATE_NOTIFICATION_APIS.md).
 
-Migration/support SQL files:
+### 11.3 FCM token lifecycle
 
-| File | Purpose |
-| --- | --- |
-| `migrations/20260630_admin_cms_user_review_fields.sql` | Admin CMS/user review fields. |
-| `migrations/20260701_sync_app_tables.sql` | Sync application tables. |
+Register or refresh after sign-in and whenever the client SDK rotates the token:
 
-The app also uses `sequelize.sync()`. In production, prefer explicit migrations over automatic schema alteration.
+```http
+PUT /api/auth/fcm-token
+Authorization: Bearer <token>
+Content-Type: application/json
 
-## 18. Detailed API Reference
-
-For full request and response examples, see:
-
-```txt
-docs/API_REFERENCE.md
+{
+  "fcm_token": "current-device-token",
+  "fcm_platform": "android"
+}
 ```
 
-This project documentation is a high-level single-file guide. The API reference contains longer example payloads and response bodies.
+Remove it during logout:
 
-## 19. Known Limitations and Production Notes
+```http
+DELETE /api/auth/fcm-token
+Authorization: Bearer <token>
+```
 
-- Some legacy/common routes are still not protected by authentication middleware.
-- Full role-based access control is not consistently enforced across every route group.
-- SOAP note generation depends on OpenAI availability and a valid `OPENAI_API_KEY`; generated clinical documentation should be reviewed by a qualified clinician.
-- Wound report PDFs are generated locally; doctor/patient report endpoints still mostly return metadata/URLs and should be aligned if binary PDF behavior is required there too.
-- Profile photo, wound image, voice dictation, and wound report PDF storage use local disk.
-- Local uploaded files are not backed by cloud/object storage and may be lost if the runtime filesystem is replaced.
-- Automatic notification creation is not wired for every business event.
-- `npm test` is a placeholder and there is no automated test suite yet.
-- `sequelize.sync({ alter: true })` can change schema at runtime; use carefully outside local development.
-- The custom token implementation is JWT-like but not using a standard JWT library.
+The schema stores one token per user, so signing in on another device can replace the previous device token.
 
-## 20. Recommended Next Improvements
+### 11.4 Notification and push flow
 
-- Apply `authenticateToken` and `requireRoles` consistently to all protected routes.
-- Add integration tests for auth, patient app, wound cases, reports, notifications, and subscriptions.
-- Add automated contract and failure-mode tests for SOAP/report AI generation.
-- Move image/audio/report uploads to durable storage.
-- Add migration-based deployment workflow.
-- Add API versioning, for example `/api/v1/...`.
-- Add request validation middleware for payloads and query params.
+The general, doctor, and patient notification-create APIs call `Notification.create(...)`. The model's centralized `afterCreate` hook then:
+
+1. Reads `notification.user_id`.
+2. Loads that user.
+3. Skips with `fcm_token_not_registered` if the user has no token.
+4. Skips with `firebase_not_configured` if Firebase is unavailable.
+5. Sends a notification payload containing title/body.
+6. Sends stringified data containing `notification_id`, `type`, `action_url`, and notification metadata.
+7. Uses Android channel `wound_updates`, high priority, and default sound.
+8. Uses APNs default sound and badge `1`.
+9. Clears invalid/unregistered tokens from the user record.
+
+Database creation remains successful when delivery is skipped or fails. If a Sequelize transaction is used, delivery is scheduled after commit. Raw SQL and `bulkCreate()` without individual hooks do not invoke this `afterCreate` behavior.
+
+### 11.5 Nurse patient, task, and wound scope
+
+Nurse route groups use `req.user.id` rather than trusting a client-supplied nurse ID. Patient, task, and wound-case controllers check ownership/assignment before reads and writes. Reassignment can move a patient/task to another nurse or doctor after validating the destination user.
+
+### 11.6 Doctor-owned resource scope
+
+`/api/doctor/patients` and `/api/doctor/wound-cases` are the doctor route groups with consistent bearer/RBAC enforcement. Patient ownership is based on `doctor_id`/`assigned_to`; wound access is resolved through owned patient IDs.
+
+Several older doctor modules use path/body IDs without route authentication. See the security section before exposing them.
+
+### 11.7 Patient context resolution
+
+Patient app endpoints resolve the linked `patients` record using this order:
+
+1. `patient_id` query parameter.
+2. `patientId` query parameter.
+3. `mrn` query parameter.
+4. `req.user.app_settings.patient_profile.patient_id_mrn`.
+5. `req.user.app_settings.patient_profile.mrn`.
+
+If no matching row is found, the patient app reports that the patient profile could not be resolved. The authenticated user's role must be `patient`.
+
+### 11.8 Wound clinical timeline
+
+The wound model stores structured arrays in JSON columns:
+
+- `images`: uploaded image metadata and URLs.
+- `measurements`: dimensions, area/progress, timestamps, and creator metadata.
+- `updates`: general wound timeline events.
+- `clinical_notes`: manual notes, doctor instructions, voice notes, and SOAP structures.
+- `reports`: report metadata, AI output, sharing state, and generated PDF information.
+
+Controllers normalize old/new snake-case and camel-case shapes when returning these arrays.
+
+### 11.9 Voice dictation and transcription
+
+Two related endpoints exist:
+
+- `save-voice-dictation`: stores supplied transcript text and/or uploaded audio metadata. It does not perform speech-to-text.
+- `transcribe-voice-dictation`: uploads audio or reuses a saved local audio path, sends it to `WHISPER_SERVICE_URL`, and stores the returned text as a voice clinical note.
+
+The configured service receives multipart audio and an optional `model` field. An optional bearer service token is sent from `WHISPER_SERVICE_API_KEY`.
+
+### 11.10 AI SOAP notes
+
+`POST /api/wound-cases/generate-soap-note/:id` sends the clinical narrative and wound-case context to the OpenAI Responses API. It requests a structured SOAP note and stores the result in `clinical_notes`.
+
+Requirements:
+
+- `OPENAI_API_KEY`.
+- Narrative text/instructions sufficient for generation.
+- Nurse bearer token and scoped wound case.
+
+AI clinical output must be reviewed by qualified clinical staff before use.
+
+### 11.11 AI reports and PDFs
+
+The nurse report-generation endpoint sends wound and report inputs to OpenAI and stores AI output in the wound case's `reports` JSON array. The download endpoint separately renders a PDF with PDFKit, saves it under `uploads/reports`, and updates report file metadata.
+
+Doctor/patient report modules mainly operate on stored metadata and URLs; they do not all perform the same binary/PDF generation behavior as the nurse download endpoint.
+
+### 11.12 Patient and doctor handoffs
+
+Both handoff modules follow a staged workflow:
+
+1. List/select patients.
+2. List/select receiving staff.
+3. Create a draft.
+4. Add general/per-patient notes.
+5. Review details.
+6. Confirm the handoff.
+7. Return a success summary.
+
+Confirmation updates patient assignments and marks the handoff completed. Handoff records use JSON arrays for selected patient/task IDs and notes.
+
+### 11.13 Subscriptions and StoreKit
+
+Plans are defined in code:
+
+| Plan | Amount | Interval | Trial | Intended audience |
+|---|---:|---|---:|---|
+| Free | CHF 0 | Forever | 0 days | Patients/basic users |
+| Basic | CHF 19 | Monthly | 0 days | Independent clinicians |
+| Professional | CHF 49 | Monthly | 7 days | Advanced clinical wound care |
+| Organization | CHF 299 | Monthly | 0 days | Clinics/hospitals/care facilities |
+
+StoreKit endpoints parse JWS transaction payloads, optionally verify signatures, compare configured bundle/product IDs, derive subscription status from transaction dates/revocation, and upsert subscription records. Production billing security should be reviewed independently.
+
+### 11.14 Permanent deletion
+
+Patient deletion removes dependent tasks and wound cases in a transaction. User deletion also removes notifications/subscriptions/handoffs, nulls references, and deletes a linked patient record for patient-role users when its MRN can be resolved from app settings.
+
+These endpoints are destructive and should require strong authentication, authorization, audit logging, and confirmation in production.
+
+## 12. File uploads and generated files
+
+Express publicly serves local files at:
+
+```text
+/uploads/<folder>/<filename>
+```
+
+### Profile photos
+
+| Detail | Value |
+|---|---|
+| Folder | `uploads/profile-photos/` |
+| Max file size | 15 MB |
+| File aliases | `image`, `file`, `photo`, `profile_photo`, `profilePhoto` |
+| Accepted | Image MIME types or common image extensions (`jpg`, `jpeg`, `png`, `webp`, `heic`, `heif`, `gif`) |
+| Endpoints | Common account creation and authenticated `/api/auth/upload-image` |
+
+### Wound images
+
+| Detail | Value |
+|---|---|
+| Folder | `uploads/wound-images/` |
+| Max file size | 20 MB per image |
+| Max count | 10 files per request |
+| File aliases | `image`, `images`, `file`, `files`, `wound_image`, `wound_images`, `woundImage`, `woundImages` |
+| Endpoint | `PATCH /api/wound-cases/add-wound-image/:id` |
+
+### Voice dictation
+
+| Detail | Value |
+|---|---|
+| Folder | `uploads/voice-dictations/` |
+| Max file size | 25 MB |
+| Accepted | `audio/*` or `application/octet-stream` |
+| File aliases | `audio`, `voice`, `file`, `voice_file`, `voiceFile`, `audio_file`, `audioFile` |
+| Endpoints | Save/transcribe voice-dictation endpoints |
+
+### Report PDFs
+
+Generated nurse wound-report PDFs are stored under `uploads/reports/`. Report metadata can include `url`, `file_url`, `file_path`, and `file_size`.
+
+Local disk is not durable across all hosting platforms. Production deployments should use private object storage, signed URLs, file scanning, retention policies, and access control for clinical media.
+
+## 13. Migrations and schema management
+
+| Migration | Purpose |
+|---|---|
+| `20260630_admin_cms_user_review_fields.sql` | Adds/normalizes roles, review status, reviewer, timestamps, rejection reason, and indexes. |
+| `20260701_sync_app_tables.sql` | Idempotent-style table/column synchronization for the application models. |
+| `20260716_add_fcm_columns_to_users.sql` | Adds single-device FCM token, platform, and update timestamp. |
+| `20260723_add_doctor_id_to_patients.sql` | Adds doctor ownership/assignment column when absent. |
+| `20260729_add_patient_assignment_fields.sql` | Adds `assigned_by`/`assigned_to` and backfills them. |
+
+Recommended deployment approach:
+
+1. Back up the database.
+2. Review SQL against the target schema.
+3. Run explicit migrations in order as needed.
+4. Keep `DB_SYNC_ALTER=false` outside controlled development environments.
+5. Verify foreign keys/indexes and application startup.
+
+Some SQL files contain `USE ai_enabled_wound_db`; update or remove it when the deployed database has a different name.
+
+## 14. Utility scripts
+
+| File | Purpose | Notes |
+|---|---|---|
+| `scripts/createAdminUser.js` | Create/update an admin bootstrap account. | Uses `ADMIN_*` environment variables. |
+| `scripts/syncMissingUserReviewFields.js` | Synchronize missing review/account columns or data. | Requires database access. |
+| `scripts/apiSmokeTest.js` | Create temporary records, launch an API server, call multiple endpoints, print results, and clean up. | Written for an older protection state and may need bearer-token updates before it passes current nurse-protected routes. |
+
+Run scripts explicitly with Node, for example:
+
+```bash
+node scripts/createAdminUser.js
+```
+
+## 15. Postman assets
+
+| File | Purpose |
+|---|---|
+| `postman/AI-Enabled-Wound-APIs.postman_collection.json` | Main project collection. |
+| `postman/AI-Enabled-Wound-APIs.postman_environment.json` | Main environment variables. |
+| `postman/AI-Enabled-Wound-Doctor-APIs.postman_collection.json` | Doctor-specific collection. |
+| `postman/AI-Enabled-Wound-Doctor-APIs.postman_environment.json` | Doctor environment variables. |
+| `postman/README.md` | Import/use instructions. |
+
+Collections should be revalidated whenever route authentication or response contracts change.
+
+## 16. Operational checks
+
+### Basic health verification
+
+There is no dedicated health endpoint. Startup success requires both database authentication and `sequelize.sync()` success. A practical check is to call a known public read endpoint or add a dedicated `/health` route for production.
+
+### Manual verification sequence
+
+1. Start MySQL and configure `.env`.
+2. Run necessary migrations.
+3. Start the API and confirm database/server logs.
+4. Create or seed accepted users for each role.
+5. Sign in and capture bearer tokens.
+6. Test one protected endpoint per role.
+7. Register a real device FCM token.
+8. Create a notification and confirm both DB persistence and device delivery.
+9. Test image/audio/PDF storage.
+10. Test AI/Whisper paths only with non-production clinical test data.
+
+### Automated testing status
+
+- `npm test` is a placeholder.
+- No unit/integration test framework is configured.
+- A custom smoke-test script exists but should be updated to match current authentication requirements.
+- No lint or formatting script is configured.
+
+## 17. Security and production-readiness audit
+
+### Route-level protection gaps
+
+The following groups are wholly or mostly public in current code despite exposing sensitive or mutating behavior:
+
+- Admin organization/user listing.
+- Common profile/settings, including password/session/account deletion actions.
+- Common notifications.
+- Nurse handoffs.
+- Subscriptions and StoreKit verification/restore.
+- Doctor management except `GET /api/doctor/patients`.
+- Doctor tasks, wound details, profile/settings, handoffs, and notifications.
+
+Apply `authenticateToken` and role/ownership checks before production deployment.
+
+### Other important findings
+
+- `registerPushToken` is referenced by common `signin` but is undefined.
+- Admin routes import `adminAuthMiddleware` but never apply it.
+- A custom JWT-like implementation increases maintenance/security-review burden compared with a well-tested JWT library.
+- Common verification codes are stored in plaintext.
+- Some endpoints accept target user IDs directly without verifying caller ownership.
+- Local upload files are publicly accessible and can contain sensitive clinical data.
+- There is no request-rate limiting, centralized validation framework, audit log, CSRF strategy, security-header middleware, or API versioning.
+- No CORS middleware is configured; cross-origin browser clients require an API proxy, same-origin deployment, or an explicit CORS policy.
+- Technical error messages are often returned to clients.
+- StoreKit signature verification can be disabled by environment configuration and deserves a dedicated production security review.
+- `sequelize.sync({ alter: true })` can make uncontrolled runtime schema changes.
+- Database configuration calls `process.exit(1)` during import when authentication fails, which complicates tests and tooling.
+- `app.js` uses both `express.json()` and `bodyParser.json()`; `body-parser` is not declared as a direct project dependency and the second parser is redundant.
+- One FCM token per user does not support reliable multi-device delivery.
+- FCM push results are not exposed by create-notification API responses or persisted for delivery auditing/retry.
+- AI-generated clinical content is not a substitute for clinician review.
+
+## 18. Recommended improvement roadmap
+
+### Immediate
+
+1. Fix or replace the undefined `registerPushToken` call.
+2. Apply authentication/RBAC/ownership checks to every sensitive route.
+3. Protect destructive endpoints and add audit logging.
+4. Move secrets out of local/shared files and rotate any exposed credentials.
+5. Add a health endpoint and structured application logging.
+
+### Short term
+
+1. Add request-schema validation and consistent error handling.
+2. Add unit/integration tests for auth, ownership, notifications, wound cases, handoffs, reports, and subscriptions.
+3. Update the smoke test and Postman collections for bearer auth.
+4. Replace runtime schema alteration with a formal migration workflow.
+5. Add rate limiting, secure headers, and brute-force protection.
+6. Store verification codes as hashes.
+
+### Medium term
+
+1. Move clinical files to private durable object storage.
+2. Add multi-device push-token storage and delivery records/retries.
+3. Standardize nurse/doctor/patient APIs under `/api/v1`.
+4. Define Sequelize associations and transactional boundaries for cross-table workflows.
+5. Add background jobs for email, push, transcription, AI generation, and PDF creation.
+6. Add observability, metrics, error tracking, backups, and disaster-recovery procedures.
+
+## 19. Documentation maintenance
+
+This guide describes the current route and source implementation. Keep it synchronized when any of these change:
+
+- Route path, method, prefix, or middleware.
+- Controller request/response contract.
+- Model field, enum, or relationship.
+- Environment variable or third-party integration.
+- Upload limit/file type.
+- Migration/deployment process.
+- Authentication/authorization behavior.
+
+For detailed sign-in and notification-create examples, see [Sign-in and Create Notification APIs](SIGNIN_AND_CREATE_NOTIFICATION_APIS.md).
