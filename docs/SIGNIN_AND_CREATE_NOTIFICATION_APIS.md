@@ -35,6 +35,8 @@ Content-Type: application/json
 | Field | Type | Required | Description |
 |---|---|---:|---|
 | `email` | string | Yes | User email. It is trimmed and converted to lowercase. |
+| `role` | string | Yes | Account role to sign in as: `doctor`, `nurse`, or `patient`. |
+| `account_type` / `accountType` | string | Yes | `individual` or `organizational`; selects the account type to sign in as. |
 | `password` | string | Yes | User password. |
 | `fcm_token` / `fcmToken` | string | No | FCM registration token for the current app installation. |
 | `fcm_platform` / `fcmPlatform` | string | No | One of `android`, `ios`, or `web`. Defaults to `android` when an FCM token is supplied without a platform. |
@@ -44,6 +46,8 @@ Content-Type: application/json
 ```json
 {
   "email": "doctor@example.com",
+  "role": "doctor",
+  "account_type": "organizational",
   "password": "password123",
   "fcm_token": "device-fcm-registration-token",
   "fcm_platform": "android"
@@ -55,6 +59,8 @@ The FCM fields may be omitted when the client does not yet have a token:
 ```json
 {
   "email": "doctor@example.com",
+  "role": "doctor",
+  "account_type": "organizational",
   "password": "password123"
 }
 ```
@@ -90,13 +96,13 @@ Authorization: Bearer <jwt-access-token>
 
 ### Error responses
 
-#### Missing email or password
+#### Missing email, role, account type, or password
 
 Status: `400 Bad Request`
 
 ```json
 {
-  "message": "Email and password are required"
+  "message": "Email, role, account type and password are required"
 }
 ```
 
@@ -526,4 +532,3 @@ curl --request POST "http://localhost:3000/api/patient/notifications" \
 - `/api/notifications/create-notification` and `/api/doctor/notifications/:doctorId` currently have no authentication middleware. They should be protected before production deployment.
 - Never return or log passwords, password hashes, JWT signing secrets, Firebase service-account private keys, or full FCM registration tokens.
 - Validate that the caller is allowed to notify the requested recipient when authorization is added.
-

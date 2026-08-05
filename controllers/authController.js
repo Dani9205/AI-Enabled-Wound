@@ -1,4 +1,5 @@
 const User = require('../models/userModel');
+const { Op } = require('sequelize');
 const { sendEmailCode } = require('../utils/mailer');
 const { resolveOrganization } = require('../utils/organizationResolver');
 const {
@@ -9,6 +10,7 @@ const {
 } = require('../utils/security');
 
 const ALLOWED_ROLES = ['doctor', 'nurse', 'patient'];
+const ACCOUNT_TYPES = ['individual', 'organizational'];
 const CODE_EXPIRY_MINUTES = 10;
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
@@ -22,6 +24,49 @@ const FCM_PLATFORMS = ['android', 'ios', 'web'];
 const normalizeFcmPlatform = (value) => {
   const platform = String(value || '').trim().toLowerCase();
   return platform || null;
+};
+
+const normalizeAccountType = (value) =>
+  String(value || '').trim().toLowerCase();
+
+const getAccountTypeWhere = (accountType) => {
+  const hasOrganization = {
+    [Op.or]: [
+      {
+        [Op.and]: [
+          { organization_hospital: { [Op.ne]: null } },
+          { organization_hospital: { [Op.ne]: '' } },
+        ],
+      },
+      {
+        [Op.and]: [
+          { organization_code: { [Op.ne]: null } },
+          { organization_code: { [Op.ne]: '' } },
+        ],
+      },
+    ],
+  };
+
+  if (accountType === 'organizational') {
+    return hasOrganization;
+  }
+
+  return {
+    [Op.and]: [
+      {
+        [Op.or]: [
+          { organization_hospital: null },
+          { organization_hospital: '' },
+        ],
+      },
+      {
+        [Op.or]: [
+          { organization_code: null },
+          { organization_code: '' },
+        ],
+      },
+    ],
+  };
 };
 
 const getRequestBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
@@ -258,11 +303,13 @@ const createAccount = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({
+      where: { email, role, ...getAccountTypeWhere('individual') },
+    });
 
     if (existingUser) {
       return res.status(409).json({
-        message: 'Email already exists',
+        message: 'An individual account with this email and role already exists',
       });
     }
 
@@ -394,11 +441,14 @@ const createOrganizationAccount = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({
+      where: { email, role, ...getAccountTypeWhere('organizational') },
+    });
 
     if (existingUser) {
       return res.status(409).json({
-        message: 'Email already exists',
+        message:
+          'An organizational account with this email and role already exists',
       });
     }
 
@@ -521,25 +571,50 @@ const acceptOrganizationRequest = async (req, res) => {
 const signin = async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
-    const { password } = req.body;
-    const fcmToken = String(req.body.fcm_token || req.body.fcmToken || '').trim();
+    const role = String(req.body.role || '').trim().toLowerCase();
+    const account_type = normalizeAccountType(
+      req.body.account_type || req.body.accountType
+    );
+    const password = req.body.password;
+
+    const fcmToken = String(
+      req.body.fcm_token || req.body.fcmToken || ''
+    ).trim();
+
     const fcmPlatform = normalizeFcmPlatform(
       req.body.fcm_platform || req.body.fcmPlatform
     );
 
-    if (!email || !password) {
+    // Required fields validation
+    if (!email || !role || !account_type || !password) {
       return res.status(400).json({
-        message: 'Email and password are required',
+        message: 'Email, role, account type and password are required',
       });
     }
 
+    if (!ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({
+        message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
+      });
+    }
+
+    if (!ACCOUNT_TYPES.includes(account_type)) {
+      return res.status(400).json({
+        message: `account_type must be one of: ${ACCOUNT_TYPES.join(', ')}`,
+      });
+    }
+
+    // FCM platform validation
     if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
       return res.status(400).json({
         message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
       });
     }
 
-    const user = await User.findOne({ where: { email } });
+    // Find user
+    const user = await User.findOne({
+      where: { email, role, ...getAccountTypeWhere(account_type) },
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -547,19 +622,34 @@ const signin = async (req, res) => {
       });
     }
 
-    if (!verifyPassword(password, user.password_hash)) {
+    // Verify password
+    const passwordMatched = verifyPassword(
+      password,
+      user.password_hash
+    );
+
+    if (!passwordMatched) {
       return res.status(401).json({
         message: 'Invalid email or password',
       });
     }
 
+    // Admin approval status check
     if (user.request_status !== 'accepted') {
-      const message =
-        user.request_status === 'pending'
-          ? 'Your account request is pending admin approval'
-          : user.request_status === 'suspended'
-            ? 'Your account request has been suspended'
-            : 'Your account request has not been accepted by an admin';
+      let message =
+        'Your account request has not been accepted by an admin';
+
+      if (user.request_status === 'pending') {
+        message = 'Your account request is pending admin approval';
+      }
+
+      if (user.request_status === 'suspended') {
+        message = 'Your account request has been suspended';
+      }
+
+      if (user.request_status === 'rejected') {
+        message = 'Your account request has been rejected';
+      }
 
       return res.status(403).json({
         message,
@@ -567,29 +657,48 @@ const signin = async (req, res) => {
       });
     }
 
+    // Account status check
     if (['deactivated', 'deleted'].includes(user.account_status)) {
       return res.status(403).json({
         message: 'User account is not active',
+        account_status: user.account_status,
       });
     }
 
-    user.last_login_at = new Date();
-    user.account_status = 'active';
-
-    await user.save();
-
-    if (fcmToken) {
-      await registerPushToken(user.id, fcmToken, fcmPlatform || 'android');
-    }
-
+    // Generate authentication token
     const token = signToken({
       id: user.id,
       email: user.email,
       role: user.role,
     });
 
+    // Update login information
+    user.last_login_at = new Date();
+    user.account_status = 'active';
     user.auth_token = token;
+
+    // Update FCM information only when token is provided
+    if (fcmToken) {
+      user.fcm_token = fcmToken;
+      user.fcm_platform = fcmPlatform || 'android';
+      user.fcm_token_updated_at = new Date();
+    }
+
+    // Save all changes
     await user.save();
+
+    // Optional: save token in separate push-token table
+    // Is block ko tab use karein jab registerPushToken()
+    // separate device/push_tokens table mein token save karta ho.
+    /*
+    if (fcmToken) {
+      await registerPushToken(
+        user.id,
+        fcmToken,
+        fcmPlatform || 'android'
+      );
+    }
+    */
 
     return res.status(200).json({
       message: 'Login successful',
@@ -597,6 +706,8 @@ const signin = async (req, res) => {
       user: publicUser(user),
     });
   } catch (error) {
+    console.error('Signin error:', error);
+
     return res.status(500).json({
       message: 'Signin failed',
       error: error.message,
@@ -604,77 +715,7 @@ const signin = async (req, res) => {
   }
 };
 
-// const signin = async (req, res) => {
-//   try {
-//     const email = normalizeEmail(req.body.email);
-//     const { password } = req.body;
 
-//     if (!email || !password) {
-//       return res.status(400).json({
-//         message: 'Email and password are required',
-//       });
-//     }
-
-//     const user = await User.findOne({ where: { email } });
-
-//     if (!user) {
-//       return res.status(404).json({
-//         message: 'User not found',
-//       });
-//     }
-
-//     if (!verifyPassword(password, user.password_hash)) {
-//       return res.status(401).json({
-//         message: 'Invalid email or password',
-//       });
-//     }
-
-//     if (user.request_status !== 'accepted') {
-//       const message =
-//         user.request_status === 'pending'
-//           ? 'Your account request is pending admin approval'
-//           : user.request_status === 'suspended'
-//             ? 'Your account request has been suspended'
-//             : 'Your account request has not been accepted by an admin';
-
-//       return res.status(403).json({
-//         message,
-//         request_status: user.request_status,
-//       });
-//     }
-
-//     if (['deactivated', 'deleted'].includes(user.account_status)) {
-//       return res.status(403).json({
-//         message: 'User account is not active',
-//       });
-//     }
-
-//     user.last_login_at = new Date();
-//     user.account_status = 'active';
-
-//     await user.save();
-
-//     const token = signToken({
-//       id: user.id,
-//       email: user.email,
-//       role: user.role,
-//     });
-
-//     user.auth_token = token;
-//     await user.save();
-
-//     return res.status(200).json({
-//       message: 'Login successful',
-//       token,
-//       user: publicUser(user),
-//     });
-//   } catch (error) {
-//     return res.status(500).json({
-//       message: 'Signin failed',
-//       error: error.message,
-//     });
-//   }
-// };
 
 
 

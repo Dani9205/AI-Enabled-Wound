@@ -1,4 +1,5 @@
 const User = require('../models/userModel');
+const { Op } = require('sequelize');
 const { sendEmailCode } = require('../utils/mailer');
 const { resolveOrganization } = require('../utils/organizationResolver');
 const {
@@ -44,6 +45,36 @@ const findPatientByEmail = (email) =>
       role: PATIENT_ROLE,
     },
   });
+
+const organizationalAccountWhere = {
+  [Op.or]: [
+    {
+      [Op.and]: [
+        { organization_hospital: { [Op.ne]: null } },
+        { organization_hospital: { [Op.ne]: '' } },
+      ],
+    },
+    {
+      [Op.and]: [
+        { organization_code: { [Op.ne]: null } },
+        { organization_code: { [Op.ne]: '' } },
+      ],
+    },
+  ],
+};
+
+const setSignupCode = async (user) => {
+  const code = generateSixDigitCode();
+
+  user.verification_code = code;
+  user.verification_code_expires_at = new Date(
+    Date.now() + CODE_EXPIRY_MINUTES * 60 * 1000
+  );
+  user.verification_purpose = 'signup';
+
+  await user.save();
+  await sendEmailCode({ to: user.email, code, purpose: 'signup' });
+};
 
 const setResetCode = async (user) => {
   const code = generateSixDigitCode();
@@ -147,6 +178,11 @@ const validateProfessionalInfo = ({ hospitalInstitution, patientIdMrn }) => {
   return null;
 };
 
+
+
+
+
+
 const submitPersonalInformation = async (req, res) => {
   try {
     const personalInfo = getPersonalInfo(req.body);
@@ -157,11 +193,17 @@ const submitPersonalInformation = async (req, res) => {
     }
 
     const existingUser = await User.findOne({
-      where: { email: personalInfo.email },
+      where: {
+        email: personalInfo.email,
+        role: PATIENT_ROLE,
+        ...organizationalAccountWhere,
+      },
     });
 
     if (existingUser) {
-      return res.status(409).json({ message: 'Email already exists' });
+      return res.status(409).json({
+        message: 'An organizational patient account with this email already exists',
+      });
     }
 
     return res.status(200).json({
@@ -184,6 +226,12 @@ const submitPersonalInformation = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
 
 const submitProfessionalCredentials = async (req, res) => {
   try {
@@ -212,6 +260,12 @@ const submitProfessionalCredentials = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
 
 const setAccountPassword = async (req, res) => {
   try {
@@ -257,11 +311,17 @@ const setAccountPassword = async (req, res) => {
     }
 
     const existingUser = await User.findOne({
-      where: { email: personalInfo.email },
+      where: {
+        email: personalInfo.email,
+        role: PATIENT_ROLE,
+        ...organizationalAccountWhere,
+      },
     });
 
     if (existingUser) {
-      return res.status(409).json({ message: 'Email already exists' });
+      return res.status(409).json({
+        message: 'An organizational patient account with this email already exists',
+      });
     }
 
     const organization = await resolveOrganization({
@@ -318,8 +378,11 @@ const setAccountPassword = async (req, res) => {
       },
     });
 
+    await setSignupCode(user);
+
     return res.status(201).json({
-      message: 'Patient account request submitted successfully',
+      message:
+        'Patient account request submitted successfully. Verification code sent to email',
       next_step: 'pending-approval',
       patient: publicPatient(user),
       request_summary: {
@@ -338,6 +401,13 @@ const setAccountPassword = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
 
 const signin = async (req, res) => {
   try {

@@ -842,9 +842,10 @@ All endpoints require a patient bearer token. The recipient is always the authen
 - Required: first name, last name, email, phone number, role, password, confirmation, and accepted terms.
 - Optional: profile photo/file or profile URL, `fcm_token`, and `fcm_platform`.
 - Roles: `doctor`, `nurse`, or `patient`.
+- Account types: `individual` for `/create-account` and `organizational` for `/create-organization-account`.
 - FCM platforms: `android`, `ios`, or `web`.
 
-It validates uniqueness and password confirmation, resolves optional organization data, hashes the password, creates the user, and sends a signup code by SMTP.
+It validates the email, role, and account-type combination and password confirmation, resolves optional organization data, hashes the password, creates the user, and sends a signup code by SMTP. One email can therefore have an individual and organizational account for each of `doctor`, `nurse`, and `patient`, but cannot register the same combination twice.
 
 `POST /api/auth/create-organization-account` follows the same basic flow and additionally accepts organization/hospital name and organization code, creating an account request for review.
 
@@ -858,13 +859,15 @@ Content-Type: application/json
 
 {
   "email": "nurse@example.com",
+  "role": "nurse",
+  "account_type": "individual",
   "password": "password123"
 }
 ```
 
 Successful sign-in requires:
 
-- A matching email/password.
+- A matching email, role, account type, and password.
 - `request_status` equal to `accepted`.
 - `account_status` not equal to `deactivated` or `deleted`.
 
