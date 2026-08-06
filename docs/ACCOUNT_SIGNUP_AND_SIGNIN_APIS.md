@@ -96,6 +96,53 @@ Optional fields: `fcm_token`/`fcmToken` and `fcm_platform`/`fcmPlatform`.
 
 The API finds the user by email, role, and organization-field-derived account type. It rejects pending, rejected, suspended, deactivated, and deleted accounts, then returns a JWT and public user data on success.
 
+### `POST /api/auth/verify-code`
+
+Verifies the six-digit signup/sign-in code for one exact multi-account record.
+
+Required fields: `user_id`/`userId`, normalized `email`, `role`, `account_type`/`accountType`, and `code`.
+
+`user_id`, `email`, `role`, and `account_type` must match the account returned by the signup response. Email-only verification is not supported because multiple accounts can share the same email.
+
+```json
+{
+  "user_id": 123,
+  "email": "ayesha@example.com",
+  "role": "nurse",
+  "account_type": "organizational",
+  "code": "345957"
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "Account verified successfully",
+  "token": "header.payload.signature",
+  "user": {
+    "id": 123,
+    "email": "ayesha@example.com",
+    "role": "nurse",
+    "account_type": "organizational",
+    "is_email_verified": true
+  }
+}
+```
+
+Errors:
+
+| Status | Message |
+|---|---|
+| `400` | `user_id, email, role, account_type and code are required` |
+| `400` | `Verification code not requested` |
+| `400` | `Verification code expired` |
+| `400` | `Invalid verification code` |
+| `400` | `Verification code already used or expired` |
+| `404` | `User not found` |
+
+Verification codes expire 10 minutes after generation. On success, the API atomically marks the exact user email as verified, clears the stored code/expiry/purpose, stores the auth token, and returns the token.
+
 ## 2. Doctor Organizational Signup APIs
 
 All endpoints are public and mounted under `/api/doctor/auth`. These APIs create an organizational `doctor` account only.

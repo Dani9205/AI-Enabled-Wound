@@ -11,7 +11,6 @@ const {
 
 const ALLOWED_ROLES = ['doctor', 'nurse', 'patient'];
 const ACCOUNT_TYPES = ['individual', 'organizational'];
-const CODE_EXPIRY_MINUTES = 10;
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 const isTruthy = (value) =>
@@ -28,6 +27,14 @@ const normalizeFcmPlatform = (value) => {
 
 const normalizeAccountType = (value) =>
   String(value || '').trim().toLowerCase();
+
+const deriveAccountType = (user) => {
+  const hasOrganization =
+    Boolean(String(user.organization_hospital || '').trim()) ||
+    Boolean(String(user.organization_code || '').trim());
+
+  return hasOrganization ? 'organizational' : 'individual';
+};
 
 const getAccountTypeWhere = (accountType) => {
   const hasOrganization = {
@@ -68,6 +75,25 @@ const getAccountTypeWhere = (accountType) => {
     ],
   };
 };
+
+const findUserByAccountIdentity = ({ userId, email, role, accountType }) =>
+  User.findOne({
+    where: {
+      id: userId,
+      email,
+      role,
+      ...getAccountTypeWhere(accountType),
+    },
+  });
+
+const findDuplicateAccount = ({ email, role, accountType }) =>
+  User.findOne({
+    where: {
+      email,
+      role,
+      ...getAccountTypeWhere(accountType),
+    },
+  });
 
 const getRequestBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
 
@@ -122,6 +148,7 @@ const publicUser = (user) => ({
   phone_number: user.phone_number,
   profile_photo_url: user.profile_photo_url,
   role: user.role,
+  account_type: deriveAccountType(user),
   is_email_verified: user.is_email_verified,
 });
 
@@ -130,9 +157,7 @@ const setVerificationCode = async (user, purpose) => {
 
   // Plain code save hoga database me
   user.verification_code = code;
-  user.verification_code_expires_at = new Date(
-    Date.now() + CODE_EXPIRY_MINUTES * 60 * 1000
-  );
+  user.verification_code_expires_at = new Date(Date.now() + 10 * 60 * 1000);
   user.verification_purpose = purpose;
 
   await user.save();
@@ -154,7 +179,9 @@ const ensureValidCode = (user, code, purpose) => {
     return 'Verification code not requested';
   }
 
-  if (new Date(user.verification_code_expires_at).getTime() < Date.now()) {
+  const expiresAt = new Date(user.verification_code_expires_at);
+
+  if (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date()) {
     return 'Verification code expired';
   }
 
@@ -303,8 +330,10 @@ const createAccount = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({
-      where: { email, role, ...getAccountTypeWhere('individual') },
+    const existingUser = await findDuplicateAccount({
+      email,
+      role,
+      accountType: 'individual',
     });
 
     if (existingUser) {
@@ -335,6 +364,9 @@ const createAccount = async (req, res) => {
     return res.status(201).json({
       message: 'Account created successfully. Verification code sent to email',
       email: user.email,
+      user_id: user.id,
+      role: user.role,
+      account_type: deriveAccountType(user),
       next_step: 'verify-code',
       user: publicUser(user),
     });
@@ -441,8 +473,10 @@ const createOrganizationAccount = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({
-      where: { email, role, ...getAccountTypeWhere('organizational') },
+    const existingUser = await findDuplicateAccount({
+      email,
+      role,
+      accountType: 'organizational',
     });
 
     if (existingUser) {
@@ -491,6 +525,9 @@ const createOrganizationAccount = async (req, res) => {
       message:
         'Account request submitted successfully. Verification code sent to email',
       email: user.email,
+      user_id: user.id,
+      role: user.role,
+      account_type: deriveAccountType(user),
       next_step: 'verify-code',
       user: {
         ...publicUser(user),
@@ -840,14 +877,38 @@ const removeFcmToken = async (req, res) => {
 
 const verifySigninCode = async (req, res) => {
   try {
+    const userId = req.body.user_id || req.body.userId;
     const email = normalizeEmail(req.body.email);
-    const { code } = req.body;
+    const role = String(req.body.role || '').trim().toLowerCase();
+    const accountType = normalizeAccountType(
+      req.body.account_type || req.body.accountType
+    );
+    const code = String(req.body.code || '').trim();
 
-    if (!email || !code) {
-      return res.status(400).json({ message: 'Email and code are required' });
+    if (!userId || !email || !role || !accountType || !code) {
+      return res.status(400).json({
+        message: 'user_id, email, role, account_type and code are required',
+      });
     }
 
-    const user = await User.findOne({ where: { email } });
+    if (!ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({
+        message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`,
+      });
+    }
+
+    if (!ACCOUNT_TYPES.includes(accountType)) {
+      return res.status(400).json({
+        message: `account_type must be one of: ${ACCOUNT_TYPES.join(', ')}`,
+      });
+    }
+
+    const user = await findUserByAccountIdentity({
+      userId,
+      email,
+      role,
+      accountType,
+    });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -860,19 +921,42 @@ const verifySigninCode = async (req, res) => {
       return res.status(400).json({ message: codeError });
     }
 
-    clearVerificationCode(user);
-    user.is_email_verified = true;
-    user.last_login_at = new Date();
-    await user.save();
-
     const token = signToken({
       id: user.id,
       email: user.email,
       role: user.role,
     });
 
-    user.auth_token = token;
-    await user.save();
+    const now = new Date();
+    const [updatedCount] = await User.update(
+      {
+        verification_code: null,
+        verification_code_expires_at: null,
+        verification_purpose: null,
+        is_email_verified: true,
+        last_login_at: now,
+        auth_token: token,
+      },
+      {
+        where: {
+          id: user.id,
+          email,
+          role,
+          verification_code: code,
+          verification_purpose: purpose,
+          verification_code_expires_at: { [Op.gte]: now },
+          ...getAccountTypeWhere(accountType),
+        },
+      }
+    );
+
+    if (!updatedCount) {
+      return res.status(400).json({
+        message: 'Verification code already used or expired',
+      });
+    }
+
+    const verifiedUser = await User.findByPk(user.id);
 
     return res.status(200).json({
       message:
@@ -880,7 +964,7 @@ const verifySigninCode = async (req, res) => {
           ? 'Account verified successfully'
           : 'Login successful',
       token,
-      user: publicUser(user),
+      user: publicUser(verifiedUser),
     });
   } catch (error) {
     return res
