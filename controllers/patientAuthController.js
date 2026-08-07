@@ -370,7 +370,7 @@ const setAccountPassword = async (req, res) => {
       role: PATIENT_ROLE,
       password_hash: hashPassword(password),
       request_accepted: false,
-      request_status: 'pending',
+      request_status: 'none',
       terms_accepted: true,
       terms_accepted_at: new Date(),
       app_settings: {
@@ -383,7 +383,7 @@ const setAccountPassword = async (req, res) => {
     return res.status(201).json({
       message:
         'Patient account request submitted successfully. Verification code sent to email',
-      next_step: 'pending-approval',
+      next_step: 'verify-code',
       patient: publicPatient(user),
       request_summary: {
         name: user.name,
