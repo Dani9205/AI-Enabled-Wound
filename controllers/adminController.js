@@ -104,6 +104,7 @@ const getOrganizationClinicalUsers = async (req, res) => {
         where: {
           organization_code: organizationCode,
           role: { [Op.in]: ['doctor', 'nurse'] },
+          request_status: 'accepted',
         },
         attributes: [
           'id',

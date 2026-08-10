@@ -214,6 +214,7 @@ const getAvailableStaff = async (req, res) => {
     const users = await User.findAll({
       where: {
         role: { [Op.in]: validRoles },
+        request_status: 'accepted',
         account_status: { [Op.ne]: 'deleted' },
       },
       order: [['first_name', 'ASC']],

@@ -354,6 +354,7 @@ const getCreateTaskOptions = async (req, res) => {
       User.findAll({
         where: {
           role: { [Op.in]: ['nurse', 'doctor'] },
+          request_status: 'accepted',
         },
         order: [['name', 'ASC']],
       }),
@@ -522,6 +523,7 @@ const getReassignOptions = async (req, res) => {
     const users = await User.findAll({
       where: {
         role: { [Op.in]: ['nurse', 'doctor'] },
+        request_status: 'accepted',
       },
       order: [['name', 'ASC']],
     });

@@ -187,7 +187,7 @@ const getAvailableNurses = async (req, res) => {
       req.params.nurseId || req.query.current_nurse_id || req.query.currentNurseId
     );
     const nurses = await User.findAll({
-      where: { role: 'nurse' },
+      where: { role: 'nurse', request_status: 'accepted' },
       order: [['first_name', 'ASC']],
     });
 
