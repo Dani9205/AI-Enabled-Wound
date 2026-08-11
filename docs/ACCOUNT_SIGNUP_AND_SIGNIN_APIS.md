@@ -1,39 +1,54 @@
-# Account Signup and Sign-in APIs
+# Account Signup APIs
 
-## Base URL
+Base URL examples use `http://localhost:3000`.
 
-```text
-http://localhost:3000
+All signup APIs are public. Passwords are stored as hashes. Signup creates a verification code and sends it by email where the controller calls the signup-code helper.
+
+## Shared FCM Fields
+
+Signup APIs that create the final user record can accept the current device FCM token:
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `fcm_token` / `fcmToken` | string | No | Firebase Cloud Messaging registration token. |
+| `fcm_platform` / `fcmPlatform` | string | No | `android`, `ios`, or `web`. Defaults to `android` when an FCM token is supplied without a platform. |
+
+The token is saved in `users.fcm_token`, `users.fcm_platform`, and `users.fcm_token_updated_at`.
+
+## 1. Common Individual Signup
+
+Creates an individual `doctor`, `nurse`, or `patient` account.
+
+```http
+POST /api/auth/create-account
+Content-Type: multipart/form-data
 ```
 
-Replace this URL with the deployed API host in staging or production.
+JSON bodies also work when no image file is uploaded.
 
-## Account Classification
+Required fields:
 
-The application does not store an `account_type` column. It derives the account type from organization fields:
+| Field | Aliases | Notes |
+|---|---|---|
+| `first_name` | `firstName` | First name. |
+| `last_name` | `lastName` | Last name. |
+| `email` | - | Valid email address. |
+| `phone_number` | `phoneNumber` | Phone number. |
+| `role` | - | `doctor`, `nurse`, or `patient`. |
+| `password` | - | Minimum 8 characters. |
+| `confirm_password` | `confirmPassword` | Must match `password`. |
+| `terms_accepted` | `termsAccepted` | Must be truthy. |
 
-| Account type | How it is identified |
-|---|---|
-| `individual` | `organization_hospital` and `organization_code` are empty or null. |
-| `organizational` | `organization_hospital` or `organization_code` is present. |
+Optional fields:
 
-The common sign-in API requires `account_type` so it can select the correct record. The creation endpoint determines the type itself: `/create-account` creates an individual account and `/create-organization-account` creates an organizational account.
+| Field | Aliases | Notes |
+|---|---|---|
+| `profile_photo` | file upload | Uploaded by `profilePhotoUpload` middleware. |
+| `profile_photo_url` | `profilePhotoUrl` | Used when no file is uploaded. |
+| `fcm_token` | `fcmToken` | Current device FCM token. |
+| `fcm_platform` | `fcmPlatform` | `android`, `ios`, or `web`. |
 
-The controller prevents a duplicate of the same email, role, and derived account type. The live `users.email` unique database index must be removed before the database can store more than one record with the same email address.
-
-## 1. Common Auth APIs
-
-All three endpoints are public. `create-account` and `create-organization-account` also accept a profile-image upload through the configured `uploadProfilePhoto` middleware.
-
-### `POST /api/auth/create-account`
-
-Creates an individual doctor, nurse, or patient account. It stores no organization name or code.
-
-Required fields: `first_name`/`firstName`, `last_name`/`lastName`, `email`, `phone_number`/`phoneNumber`, `role`, `password`, `confirm_password`/`confirmPassword`, and `terms_accepted`/`termsAccepted`.
-
-Optional fields: `profile_photo_url`/`profilePhotoUrl`, `fcm_token`/`fcmToken`, and `fcm_platform`/`fcmPlatform`.
-
-Allowed roles are `doctor`, `nurse`, and `patient`. Allowed FCM platforms are `android`, `ios`, and `web`. Passwords must be at least eight characters.
+Example:
 
 ```json
 {
@@ -42,256 +57,289 @@ Allowed roles are `doctor`, `nurse`, and `patient`. Allowed FCM platforms are `a
   "email": "ayesha@example.com",
   "phone_number": "+923001234567",
   "role": "nurse",
-  "password": "Password123!",
-  "confirm_password": "Password123!",
-  "terms_accepted": true
-}
-```
-
-On success, the API creates the account with `request_status: pending`, generates a six-digit signup code, saves its 10-minute expiry, emails the code, and returns `201 Created` with `next_step: verify-code`.
-
-### `POST /api/auth/create-organization-account`
-
-Creates an organizational doctor, nurse, or patient account request. The submitted organization must resolve to an existing organization.
-
-It accepts all `create-account` fields plus required `organization_hospital`/`organizationHospital` and `organization_code`/`organizationCode`.
-
-```json
-{
-  "first_name": "Ayesha",
-  "last_name": "Khan",
-  "email": "ayesha@example.com",
-  "phone_number": "+923001234567",
-  "organization_hospital": "Memorial Hospital",
-  "organization_code": "MH-001",
-  "role": "nurse",
-  "password": "Password123!",
-  "confirm_password": "Password123!",
-  "terms_accepted": true
-}
-```
-
-On success, the API creates an account request with the resolved organization details, sends a six-digit signup code to the email, and returns `201 Created` with `next_step: verify-code`.
-
-### `POST /api/auth/signin`
-
-Signs in a common individual or organizational account.
-
-Required fields: `email`, `password`, `role`, and `account_type`/`accountType`.
-
-Optional fields: `fcm_token`/`fcmToken` and `fcm_platform`/`fcmPlatform`.
-
-`role` must be `doctor`, `nurse`, or `patient`. `account_type` must be `individual` or `organizational`.
-
-```json
-{
-  "email": "ayesha@example.com",
-  "password": "Password123!",
-  "role": "nurse",
-  "account_type": "organizational",
+  "password": "password123",
+  "confirm_password": "password123",
+  "terms_accepted": true,
   "fcm_token": "device-registration-token",
   "fcm_platform": "android"
 }
 ```
 
-The API finds the user by email, role, and organization-field-derived account type. It rejects pending, rejected, suspended, deactivated, and deleted accounts, then returns a JWT and public user data on success.
-
-### `POST /api/auth/verify-code`
-
-Verifies the six-digit signup/sign-in code for one exact multi-account record.
-
-Required fields: `user_id`/`userId`, normalized `email`, `role`, `account_type`/`accountType`, and `code`.
-
-`user_id`, `email`, `role`, and `account_type` must match the account returned by the signup response. Email-only verification is not supported because multiple accounts can share the same email.
+Success response: `201 Created`
 
 ```json
 {
-  "user_id": 123,
+  "message": "Account created successfully. Verification code sent to email",
   "email": "ayesha@example.com",
+  "user_id": 1,
   "role": "nurse",
-  "account_type": "organizational",
-  "code": "345957"
+  "account_type": "individual",
+  "next_step": "verify-code",
+  "user": {}
 }
 ```
 
-Success response:
+## 2. Common Organization Signup
 
-```json
-{
-  "message": "Account verified successfully",
-  "token": "header.payload.signature",
-  "user": {
-    "id": 123,
-    "email": "ayesha@example.com",
-    "role": "nurse",
-    "account_type": "organizational",
-    "is_email_verified": true
-  }
-}
+Creates an organization-linked `doctor`, `nurse`, or `patient` account request.
+
+```http
+POST /api/auth/create-organization-account
+Content-Type: multipart/form-data
 ```
 
-Errors:
+Required fields are the same as common individual signup, plus:
 
-| Status | Message |
-|---|---|
-| `400` | `user_id, email, role, account_type and code are required` |
-| `400` | `Verification code not requested` |
-| `400` | `Verification code expired` |
-| `400` | `Invalid verification code` |
-| `400` | `Verification code already used or expired` |
-| `404` | `User not found` |
+| Field | Aliases | Notes |
+|---|---|---|
+| `organization_hospital` | `organizationHospital`, `organization`, `hospital` | Organization/hospital name. |
+| `organization_code` | `organizationCode` | Must resolve to an existing organization. |
 
-Verification codes expire 10 minutes after generation. On success, the API atomically marks the exact user email as verified, clears the stored code/expiry/purpose, stores the auth token, and returns the token.
+Optional fields are the same as common individual signup, including FCM fields.
 
-## 2. Doctor Organizational Signup APIs
-
-All endpoints are public and mounted under `/api/doctor/auth`. These APIs create an organizational `doctor` account only.
-
-### `POST /api/doctor/auth/signup/personal-information`
-
-Validates personal information and rejects only an existing organizational doctor account with the same email.
-
-Required fields: `first_name`/`firstName`, `last_name`/`lastName`, `email`/`work_email`/`workEmail`, `phone_number`/`phoneNumber`, and `gender`.
-
-Optional fields: `date_of_birth`/`dateOfBirth` and `profile_photo_url`/`profilePhotoUrl`.
+Example:
 
 ```json
 {
-  "first_name": "Ali",
-  "last_name": "Khan",
-  "work_email": "ali@example.com",
+  "first_name": "Bilal",
+  "last_name": "Ahmed",
+  "email": "bilal@example.com",
   "phone_number": "+923001234567",
-  "gender": "male"
+  "organization_hospital": "City Hospital",
+  "organization_code": "CITY-001",
+  "role": "doctor",
+  "password": "password123",
+  "confirm_password": "password123",
+  "terms_accepted": true,
+  "fcmToken": "device-registration-token",
+  "fcmPlatform": "ios"
 }
 ```
 
-Success response: `next_step: professional-credentials`.
-
-### `POST /api/doctor/auth/signup/professional-credentials`
-
-Validates and resolves doctor professional credentials. It does not create a user or send an OTP.
-
-Required fields: organization/hospital, doctor license/ID, title/designation, and at least one specialization. Accepted title values are `md`, `mbbs`, and `resident`.
-
-Organization inputs: `organization_id`/`organizationId`, `organization_code`/`organizationCode`, or organization/hospital aliases. The resolved `organization_id` returned by this endpoint is required by the next step.
+Success response: `201 Created`
 
 ```json
 {
-  "organization_code": "MH-001",
-  "organization_hospital": "Memorial Hospital",
-  "doctor_license_number": "DR-12345",
-  "title_designation": "mbbs",
-  "specializations": ["wound management"]
+  "message": "Nurse account request submitted successfully. Verification code sent to email",
+  "next_step": "verify-code",
+  "email": "bilal@example.com",
+  "user_id": 2,
+  "role": "doctor",
+  "account_type": "organizational",
+  "user": {}
 }
 ```
 
-Success response: `next_step: set-password` and resolved organization details.
+## 3. Doctor Signup: Personal Information
 
-### `POST /api/doctor/auth/signup/set-password`
+Validates and echoes the doctor's personal-information step. It does not create the user record.
 
-Combines personal and professional data, creates an organizational doctor account request, and emails a six-digit signup code with a 10-minute expiry.
-
-The request accepts flat fields or nested `personal_information`/`personalInformation` and `professional_details`/`professionalDetails` objects. Required data includes the personal fields, professional fields, resolved `organization_id`, `password`, `confirm_password`/`confirmPassword`, and accepted terms.
-
-```json
-{
-  "personal_information": {
-    "first_name": "Ali",
-    "last_name": "Khan",
-    "work_email": "ali@example.com",
-    "phone_number": "+923001234567",
-    "gender": "male"
-  },
-  "professional_details": {
-    "organization_id": 1,
-    "organization_hospital": "Memorial Hospital",
-    "doctor_license_number": "DR-12345",
-    "title_designation": "mbbs",
-    "specializations": ["wound management"]
-  },
-  "password": "Password123!",
-  "confirm_password": "Password123!",
-  "terms_accepted": true
-}
+```http
+POST /api/doctor/auth/signup/personal-information
+Content-Type: application/json
 ```
 
-Success response: `201 Created`, `next_step: pending-approval`, and a message confirming that the verification code was sent.
+Required fields:
 
-The doctor module's current `/verify-otp` route is for password-reset codes. It does not verify this signup OTP.
+| Field | Aliases | Notes |
+|---|---|---|
+| `first_name` | `firstName` | First name. |
+| `last_name` | `lastName` | Last name. |
+| `email` | `work_email`, `workEmail` | Valid work email. |
+| `phone_number` | `phoneNumber` | Phone number. |
+| `gender` | - | `male`, `female`, or `other`. |
 
-## 3. Patient Organizational Signup APIs
+Optional fields: `date_of_birth` / `dateOfBirth`, `profile_photo_url` / `profilePhotoUrl`.
 
-All endpoints are public and mounted under `/api/patient/auth`. These APIs create an organizational `patient` account only.
+Success response: `200 OK`, with `next_step: "professional-credentials"`.
 
-### `POST /api/patient/auth/signup/personal-information`
+## 4. Doctor Signup: Professional Credentials
 
-Validates patient personal information and rejects only an existing organizational patient account with the same email.
+Validates professional details and resolves the organization. It does not create the user record.
 
-Required fields: `first_name`/`firstName`, `last_name`/`lastName`, `email`, `phone_number`/`phoneNumber`, and `gender`.
-
-Optional fields: `date_of_birth`/`dateOfBirth` and `profile_photo_url`/`profilePhotoUrl`.
-
-Success response: `next_step: professional-credentials`.
-
-### `POST /api/patient/auth/signup/professional-credentials`
-
-Validates patient organization and MRN information. It does not create a user or send an OTP.
-
-Required fields: `hospital_institution`/`hospitalInstitution` and `patient_id_mrn`/`patientIdMrn`/`mrn`.
-
-Optional field: `organization_code`/`organizationCode`.
-
-```json
-{
-  "hospital_institution": "Memorial Hospital",
-  "organization_code": "MH-001",
-  "patient_id_mrn": "MRN-12345"
-}
+```http
+POST /api/doctor/auth/signup/professional-credentials
+Content-Type: application/json
 ```
 
-Success response: `next_step: set-password`.
+Required fields:
 
-### `POST /api/patient/auth/signup/set-password`
+| Field | Aliases | Notes |
+|---|---|---|
+| `organization_hospital` | `organizationHospital`, `hospital_organization`, `hospital`, `hospital_institution`, `hospitalInstitution` | Organization/hospital name. |
+| `doctor_license_number` | `doctorLicenseNumber`, `medical_license_number`, `medicalLicenseNumber`, `doctor_id`, `doctorId` | Doctor ID/license. |
+| `title_designation` | `titleDesignation`, `professional_title`, `professionalTitle` | `md`, `mbbs`, or `resident`. |
+| `specializations` | `specialization` | Array or comma-separated string; at least one required. |
 
-Combines personal and professional data, resolves the organization, creates an organizational patient account request, and emails a six-digit signup code with a 10-minute expiry.
+Optional field: `organization_id` / `organizationId`, `organization_code` / `organizationCode`.
 
-The request accepts flat fields or nested `personal_information`/`personalInformation` and `professional_details`/`professionalDetails` objects. It requires all personal information, hospital/institution, patient MRN, password, confirmation, and accepted terms.
+Success response: `200 OK`, with `next_step: "set-password"` and normalized `professional_details`.
+
+## 5. Doctor Signup: Set Password
+
+Combines personal information, professional credentials, password, terms, and optional FCM fields, then creates the doctor user.
+
+```http
+POST /api/doctor/auth/signup/set-password
+Content-Type: application/json
+```
+
+Required fields:
+
+| Field | Notes |
+|---|---|
+| All required personal-information fields | Can be sent at top level or inside `personal_information` / `personalInformation`. |
+| All required professional-credentials fields | Can be sent at top level or inside `professional_details`, `professionalDetails`, `professional_information`, or `professionalInformation`. |
+| `organization_id` / `organizationId` | Required by the final doctor signup step. |
+| `password` | Minimum 8 characters. |
+| `confirm_password` / `confirmPassword` | Must match `password`. |
+| `terms_accepted` / `termsAccepted` | Must be truthy. |
+
+Optional FCM fields: `fcm_token` / `fcmToken`, `fcm_platform` / `fcmPlatform`.
+
+Example:
 
 ```json
 {
   "personal_information": {
     "first_name": "Sara",
-    "last_name": "Ahmed",
-    "email": "sara@example.com",
-    "phone_number": "+923001234568",
+    "last_name": "Malik",
+    "work_email": "sara.doctor@example.com",
+    "phone_number": "+923001234567",
     "gender": "female"
   },
   "professional_details": {
-    "hospital_institution": "Memorial Hospital",
-    "organization_code": "MH-001",
-    "patient_id_mrn": "MRN-12345"
+    "organization_id": 1,
+    "organization_hospital": "City Hospital",
+    "doctor_license_number": "DOC-123",
+    "title_designation": "md",
+    "specializations": ["wound care"]
   },
-  "password": "Password123!",
-  "confirm_password": "Password123!",
-  "terms_accepted": true
+  "password": "password123",
+  "confirm_password": "password123",
+  "terms_accepted": true,
+  "fcm_token": "device-registration-token",
+  "fcm_platform": "android"
 }
 ```
 
-Success response: `201 Created`, `next_step: pending-approval`, and a message confirming that the verification code was sent.
+Success response: `201 Created`, with `next_step: "verify-code"`.
 
-## Common Errors
+## 6. Patient Signup: Personal Information
 
-| Status | When it is returned |
+Validates and echoes the patient's personal-information step. It does not create the user record.
+
+```http
+POST /api/patient/auth/signup/personal-information
+Content-Type: application/json
+```
+
+Required fields:
+
+| Field | Aliases | Notes |
+|---|---|---|
+| `first_name` | `firstName` | First name. |
+| `last_name` | `lastName` | Last name. |
+| `email` | - | Valid email. |
+| `phone_number` | `phoneNumber` | Phone number. |
+| `gender` | - | `male`, `female`, or `other`. |
+
+Optional fields: `date_of_birth` / `dateOfBirth`, `profile_photo_url` / `profilePhotoUrl`.
+
+Success response: `200 OK`, with `next_step: "professional-credentials"`.
+
+## 7. Patient Signup: Professional Credentials
+
+Validates patient hospital/profile information. It does not create the user record.
+
+```http
+POST /api/patient/auth/signup/professional-credentials
+POST /api/patient/auth/signup/professional-information
+Content-Type: application/json
+```
+
+Required fields:
+
+| Field | Aliases | Notes |
+|---|---|---|
+| `hospital_institution` | `hospitalInstitution`, `hospital`, `organization_hospital`, `organizationHospital` | Hospital/institution name. |
+| `patient_id_mrn` | `patientIdMrn`, `patient_id`, `patientId`, `mrn` | Patient ID/MRN. |
+
+Optional field: `organization_code` / `organizationCode`.
+
+Success response: `200 OK`, with `next_step: "set-password"`.
+
+## 8. Patient Signup: Set Password
+
+Combines personal information, patient professional/profile information, password, terms, and optional FCM fields, then creates the patient user.
+
+```http
+POST /api/patient/auth/signup/set-password
+Content-Type: application/json
+```
+
+Required fields:
+
+| Field | Notes |
 |---|---|
-| `400` | Required field, password, role, account-type, FCM platform, or credential validation fails. |
-| `404` | The requested organization cannot be resolved, or the sign-in account is not found. |
-| `409` | The controller finds an existing account with the same email, role, and derived type. |
-| `500` | Email configuration/send fails, database insertion fails, or an unexpected server error occurs. |
+| All required personal-information fields | Can be sent at top level or inside `personal_information` / `personalInformation`. |
+| All required professional-credentials fields | Can be sent at top level or inside `professional_details`, `professionalDetails`, `professional_information`, or `professionalInformation`. |
+| `password` | Minimum 8 characters. |
+| `confirm_password` / `confirmPassword` | Must match `password`. |
+| `terms_accepted` / `termsAccepted` | Must be truthy. |
 
-## OTP Delivery Requirements
+Optional FCM fields: `fcm_token` / `fcmToken`, `fcm_platform` / `fcmPlatform`.
 
-Signup OTP delivery requires `MAIL_HOST`, `MAIL_USER`, and `MAIL_PASS` environment variables. The mail subject is `Your account verification code`; the code expires after 10 minutes.
+Example:
 
-## Live Database Requirement
+```json
+{
+  "personalInformation": {
+    "firstName": "Ali",
+    "lastName": "Raza",
+    "email": "ali.patient@example.com",
+    "phoneNumber": "+923001234567",
+    "gender": "male"
+  },
+  "professionalInformation": {
+    "hospitalInstitution": "City Hospital",
+    "organizationCode": "CITY-001",
+    "patientIdMrn": "MRN-789"
+  },
+  "password": "password123",
+  "confirmPassword": "password123",
+  "termsAccepted": true,
+  "fcmToken": "device-registration-token",
+  "fcmPlatform": "web"
+}
+```
 
-The live database currently reports a unique index named `email` with `Non_unique = 0`. This blocks all second records with the same email, including a different role or organizational account. To allow the multi-account controller behavior, remove that email-only unique index and remove `unique: true` from the deployed `User` model. No `account_type` database column is required.
+Success response: `201 Created`, with `next_step: "verify-code"`.
+
+## Verification After Signup
+
+Common signup and the dedicated doctor/patient final signup steps send a signup code by email. Verify it with:
+
+```http
+POST /api/auth/verify-code
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "user@example.com",
+  "role": "nurse",
+  "code": "123456"
+}
+```
+
+After signup verification, the user request moves to review/pending state where applicable. Sign-in requires `request_status` to be `accepted`.
+
+## Common Error Responses
+
+| Status | Reason |
+|---:|---|
+| `400` | Missing required field, invalid email, invalid role, invalid password confirmation, invalid terms value, invalid gender/title, or invalid FCM platform. |
+| `404` | Organization could not be resolved. |
+| `409` | Duplicate account for the same email, role, and account type. |
+| `500` | Server-side signup failure. |

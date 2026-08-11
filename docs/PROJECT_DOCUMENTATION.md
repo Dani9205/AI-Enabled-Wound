@@ -837,6 +837,8 @@ All endpoints require a patient bearer token. The recipient is always the authen
 
 ### 11.1 Common account creation
 
+Full request/response details for every signup endpoint are documented in [Account Signup APIs](ACCOUNT_SIGNUP_AND_SIGNIN_APIS.md).
+
 `POST /api/auth/create-account` accepts:
 
 - Required: first name, last name, email, phone number, role, password, confirmation, and accepted terms.
@@ -848,6 +850,10 @@ All endpoints require a patient bearer token. The recipient is always the authen
 It validates the email, role, and account-type combination and password confirmation, resolves optional organization data, hashes the password, creates the user, and sends a signup code by SMTP. One email can therefore have an individual and organizational account for each of `doctor`, `nurse`, and `patient`, but cannot register the same combination twice.
 
 `POST /api/auth/create-organization-account` follows the same basic flow and additionally accepts organization/hospital name and organization code, creating an account request for review.
+
+Dedicated doctor signup is a three-step public flow under `/api/doctor/auth`: `/signup/personal-information`, `/signup/professional-credentials`, and `/signup/set-password`. The first two steps validate and echo data; `/signup/set-password` creates the doctor account and accepts optional `fcm_token`/`fcmToken` and `fcm_platform`/`fcmPlatform`.
+
+Dedicated patient signup is a three-step public flow under `/api/patient/auth`: `/signup/personal-information`, `/signup/professional-credentials` or `/signup/professional-information`, and `/signup/set-password`. The first two steps validate and echo data; `/signup/set-password` creates the patient account and accepts optional `fcm_token`/`fcmToken` and `fcm_platform`/`fcmPlatform`.
 
 ### 11.2 Common sign-in
 

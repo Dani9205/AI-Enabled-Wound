@@ -11,9 +11,14 @@ const {
 
 const PATIENT_ROLE = 'patient';
 const CODE_EXPIRY_MINUTES = 10;
+const FCM_PLATFORMS = ['android', 'ios', 'web'];
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 const normalizeText = (value) => String(value || '').trim();
+const normalizeFcmPlatform = (value) => {
+  const platform = normalizeText(value).toLowerCase();
+  return platform || null;
+};
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isTruthy = (value) =>
   value === true ||
@@ -275,6 +280,10 @@ const setAccountPassword = async (req, res) => {
     const password = req.body.password;
     const confirmPassword = req.body.confirm_password || req.body.confirmPassword;
     const termsAccepted = req.body.terms_accepted || req.body.termsAccepted;
+    const fcmToken = normalizeText(body.fcm_token || body.fcmToken);
+    const fcmPlatform = normalizeFcmPlatform(
+      body.fcm_platform || body.fcmPlatform
+    );
     const personalValidationError = validatePersonalInfo(personalInfo);
     const professionalValidationError = validateProfessionalInfo(professionalInfo);
 
@@ -307,6 +316,12 @@ const setAccountPassword = async (req, res) => {
     if (!isTruthy(termsAccepted)) {
       return res.status(400).json({
         message: 'Terms of Service and Privacy Policy must be accepted',
+      });
+    }
+
+    if (fcmPlatform && !FCM_PLATFORMS.includes(fcmPlatform)) {
+      return res.status(400).json({
+        message: `fcm_platform must be one of: ${FCM_PLATFORMS.join(', ')}`,
       });
     }
 
@@ -373,6 +388,9 @@ const setAccountPassword = async (req, res) => {
       request_status: 'none',
       terms_accepted: true,
       terms_accepted_at: new Date(),
+      fcm_token: fcmToken || null,
+      fcm_platform: fcmToken ? fcmPlatform || 'android' : null,
+      fcm_token_updated_at: fcmToken ? new Date() : null,
       app_settings: {
         patient_profile: patientProfile,
       },
