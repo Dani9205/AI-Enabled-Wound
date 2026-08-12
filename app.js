@@ -34,6 +34,7 @@ const doctorTaskRoutes = require('./routes/doctorTaskRoutes');
 const doctorWoundDetailsRoutes = require('./routes/doctorWoundDetailsRoutes');
 const doctorPatientRoutes = require('./routes/doctorPatientRoutes');
 const doctorWoundCaseRoutes = require('./routes/doctorWoundCaseRoutes');
+const aiWoundMeasurementRoutes = require('./routes/aiWoundMeasurementRoutes');
 
 const app = express();
 app.use(express.json());
@@ -69,6 +70,7 @@ app.use('/api/doctor/patients', doctorPatientRoutes);
 app.use('/api/doctor/wound-cases', doctorWoundCaseRoutes);
 app.use('/api/doctor', doctorManagementRoutes);
 app.use('/api/doctor/wound-details', doctorWoundDetailsRoutes);
+app.use('/api/ai-wound-measurements', aiWoundMeasurementRoutes);
 
 // Start server
 const syncOptions = process.env.DB_SYNC_ALTER === 'true' ? { alter: true } : {};

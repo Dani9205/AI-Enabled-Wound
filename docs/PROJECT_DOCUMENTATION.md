@@ -574,7 +574,16 @@ All endpoints require a nurse bearer token and scope patient/wound access to the
 | `PATCH` | `/share-report/:id/:reportId` | Nurse | Mark/share a report and record sharing metadata. |
 | `DELETE` | `/delete-wound-case/:id` | Nurse | Delete a wound case. |
 
-### 10.7 Common profile/settings — `/api/profile`
+### 10.7 AI wound measurements — `/api/ai-wound-measurements`
+
+All endpoints require a nurse or doctor bearer token. Nurse access is scoped by `patients.nurse_id`; doctor access is scoped by `patients.doctor_id`.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/:woundCaseId/detect` | Nurse, Doctor | Upload one or more wound images and return an AI-generated measurement estimate. This does not save the measurement to the wound case. |
+| `PATCH` | `/:woundCaseId/save` | Nurse, Doctor | Save the final user-reviewed AI/adjusted measurement into `wound_cases.measurements` and update current wound dimensions. |
+
+### 10.8 Common profile/settings — `/api/profile`
 
 These routes currently identify users through URL parameters and have no route-level bearer middleware.
 
@@ -984,7 +993,187 @@ The nurse report-generation endpoint sends wound and report inputs to OpenAI and
 
 Doctor/patient report modules mainly operate on stored metadata and URLs; they do not all perform the same binary/PDF generation behavior as the nurse download endpoint.
 
-### 11.12 Patient and doctor handoffs
+### 11.12 AI wound measurement workflow
+
+`aiWoundMeasurementController.js` implements a two-step AI-assisted measurement flow for the "Measure Wound" screen. Both endpoints are mounted under `/api/ai-wound-measurements` and allow `nurse` and `doctor` users only.
+
+Authorization and wound ownership:
+
+- The request must include a bearer token.
+- Nurse users can access wound cases whose patient row has `nurse_id = req.user.id`.
+- Doctor users can access wound cases whose patient row has `doctor_id = req.user.id`.
+- The `:woundCaseId` path parameter identifies the wound case. The patient is resolved through `wound_cases.patient_id`, so the frontend does not need to send `patient_id`.
+
+#### Detect AI measurement
+
+```http
+POST /api/ai-wound-measurements/:woundCaseId/detect
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+Purpose:
+
+- Accept one or more wound images.
+- Send the images and wound-case context to the OpenAI Responses API.
+- Return one AI-generated measurement estimate for the wound.
+- Save uploaded files under `uploads/wound-images`.
+- Does not save the measurement into `wound_cases.measurements`.
+- Does not append images to the wound case until the save endpoint receives the final reviewed measurement.
+
+Accepted multipart image field names:
+
+- `image`
+- `images`
+- `file`
+- `files`
+- `wound_image`
+- `wound_images`
+- `woundImage`
+- `woundImages`
+
+Optional form fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `caption` / `captions` | string or array | Caption metadata for uploaded images. |
+| `ruler_present` / `rulerPresent` | boolean/string | Optional frontend hint that a ruler is visible. |
+| `notes` | string | Optional context for AI measurement. |
+
+When one image is sent, AI estimates from that image. When multiple images are sent, AI reviews all images together and returns one best final estimate. The controller does not calculate mathematical averages across images.
+
+If a ruler or scale is visible, AI is instructed to use it. If no ruler is visible, AI may return an estimated measurement with `scale_source: "estimated"`, `ruler_detected: false`, and lower confidence. Depth from ordinary 2D images should be treated as low-confidence unless explicit depth context is visible.
+
+Example response:
+
+```json
+{
+  "message": "AI wound measurement generated successfully",
+  "measurement": {
+    "id": "ai_measurement_1723371234567_ab12cd",
+    "source": "ai_detected",
+    "length_cm": 3.5,
+    "width_cm": 2.2,
+    "depth_cm": 0.5,
+    "area_cm2": 7.7,
+    "confidence": 0.82,
+    "scale_source": "ruler",
+    "ruler_detected": true,
+    "points": {
+      "length": {
+        "start": { "x": 0.32, "y": 0.55 },
+        "end": { "x": 0.71, "y": 0.42 }
+      },
+      "width": {
+        "start": { "x": 0.51, "y": 0.39 },
+        "end": { "x": 0.56, "y": 0.68 }
+      }
+    },
+    "images": [
+      {
+        "id": "img_1723371234567_cd34ef",
+        "url": "http://localhost:3000/uploads/wound-images/1723371234567-123456789-wound.jpg",
+        "caption": null,
+        "original_name": "wound.jpg",
+        "mime_type": "image/jpeg",
+        "size": 245991,
+        "uploaded_at": "2026-08-12T10:30:00.000Z"
+      }
+    ],
+    "notes": "AI-generated estimate. Review and adjust points before saving clinical measurements.",
+    "measured_at": "2026-08-12T10:30:00.000Z"
+  },
+  "ai": {
+    "model": "gpt-4.1-mini",
+    "requires_review": true
+  }
+}
+```
+
+#### Save reviewed measurement
+
+```http
+PATCH /api/ai-wound-measurements/:woundCaseId/save
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Purpose:
+
+- Accept the final measurement after the user accepts or manually adjusts the AI result.
+- Append the final record to `wound_cases.measurements`.
+- Update `wound_cases.length_cm`, `wound_cases.width_cm`, and `wound_cases.depth_cm`.
+- Append supplied image metadata to `wound_cases.images`.
+
+The frontend should usually pass values from the detect response into this endpoint after applying any manual point/value adjustments.
+
+Example request:
+
+```json
+{
+  "length_cm": 3.6,
+  "width_cm": 2.1,
+  "depth_cm": 0.5,
+  "area_cm2": 7.56,
+  "source": "ai_adjusted",
+  "ai_confidence": 0.82,
+  "ruler_detected": true,
+  "scale_source": "ruler",
+  "points": {
+    "length": {
+      "start": { "x": 0.30, "y": 0.56 },
+      "end": { "x": 0.73, "y": 0.43 }
+    },
+    "width": {
+      "start": { "x": 0.51, "y": 0.39 },
+      "end": { "x": 0.56, "y": 0.68 }
+    }
+  },
+  "images": [
+    {
+      "id": "img_1723371234567_cd34ef",
+      "url": "http://localhost:3000/uploads/wound-images/1723371234567-123456789-wound.jpg",
+      "caption": null,
+      "original_name": "wound.jpg",
+      "mime_type": "image/jpeg",
+      "size": 245991,
+      "uploaded_at": "2026-08-12T10:30:00.000Z"
+    }
+  ],
+  "notes": "Adjusted after AI detection."
+}
+```
+
+Example response:
+
+```json
+{
+  "message": "AI wound measurement saved successfully",
+  "measurement": {
+    "id": "measurement_1723371234567_ef56gh",
+    "source": "ai_adjusted",
+    "length_cm": 3.6,
+    "width_cm": 2.1,
+    "depth_cm": 0.5,
+    "area_cm2": 7.56,
+    "points": {},
+    "images": [],
+    "ai_confidence": 0.82,
+    "ruler_detected": true,
+    "scale_source": "ruler",
+    "notes": "Adjusted after AI detection.",
+    "measured_at": "2026-08-12T10:32:00.000Z"
+  },
+  "wound_case": {}
+}
+```
+
+Runtime requirements:
+
+- `OPENAI_API_KEY` is required for the detect endpoint.
+- `OPENAI_WOUND_MEASUREMENT_MODEL` is optional; default is `gpt-4.1-mini`.
+
+### 11.13 Patient and doctor handoffs
 
 Both handoff modules follow a staged workflow:
 
