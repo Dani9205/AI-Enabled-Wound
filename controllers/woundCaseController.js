@@ -71,6 +71,7 @@ const asArray = (value) => {
 };
 
 const isNurse = (req) => req.user?.role === 'nurse';
+const isDoctor = (req) => req.user?.role === 'doctor';
 
 const getNursePatientIds = async (nurseId) => {
   const patients = await Patient.findAll({
@@ -88,12 +89,22 @@ const getScopedWoundCase = async (req, id) => {
     return null;
   }
 
-  if (!isNurse(req)) {
+  if (!isNurse(req) && !isDoctor(req)) {
     return woundCase;
   }
 
+  const patientWhere = { id: woundCase.patient_id };
+
+  if (isNurse(req)) {
+    patientWhere.nurse_id = req.user.id;
+  }
+
+  if (isDoctor(req)) {
+    patientWhere.doctor_id = req.user.id;
+  }
+
   const patient = await Patient.findOne({
-    where: { id: woundCase.patient_id, nurse_id: req.user.id },
+    where: patientWhere,
   });
 
   return patient ? woundCase : null;

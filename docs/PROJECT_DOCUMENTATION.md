@@ -1,6 +1,6 @@
 # AI-Enabled Wound APIs — Complete Project Documentation
 
-Last verified against the source code: 2026-08-04
+Last verified against the source code: 2026-08-13
 
 ## 1. Project overview
 
@@ -545,7 +545,7 @@ All endpoints require a nurse bearer token and enforce nurse/patient scope in th
 
 ### 10.6 Nurse wound cases — `/api/wound-cases`
 
-All endpoints require a nurse bearer token and scope patient/wound access to the nurse.
+Most endpoints require a nurse bearer token and scope patient/wound access to the nurse. Wound image upload, voice dictation save, and SOAP generation also allow doctor bearer tokens and scope access by the wound case patient's `doctor_id`.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -561,13 +561,13 @@ All endpoints require a nurse bearer token and scope patient/wound access to the
 | `GET` | `/download-report/:id/:reportId` | Nurse | Generate/save a PDF and return download information. |
 | `PUT` | `/update-wound-case/:id` | Nurse | Update wound-case fields and optional nested arrays. |
 | `PATCH` | `/add-wound-update/:id` | Nurse | Append a wound update/timeline item. |
-| `PATCH` | `/add-wound-image/:id` | Nurse | Upload up to ten wound images or append image metadata/URLs. |
+| `PATCH` | `/add-wound-image/:id` | Nurse, Doctor | Upload up to ten wound images or append image metadata/URLs. |
 | `DELETE` | `/delete-wound-image/:id/:imageId` | Nurse | Remove image metadata from a wound case. |
 | `PATCH` | `/add-measurement/:id` | Nurse | Append a measurement record. |
 | `PATCH` | `/add-note/:id` | Nurse | Append a manual/structured clinical note. |
-| `POST` | `/save-voice-dictation/:id` | Nurse | Save an uploaded/local audio reference and/or supplied transcript as a voice note. |
+| `POST` | `/save-voice-dictation/:id` | Nurse, Doctor | Save an uploaded/local audio reference and/or supplied transcript as a voice note. |
 | `POST` | `/transcribe-voice-dictation/:id/:noteId?` | Nurse | Transcribe uploaded or previously saved local audio and save the transcript. |
-| `POST` | `/generate-soap-note/:id` | Nurse | Generate an AI SOAP note from narrative and wound facts. |
+| `POST` | `/generate-soap-note/:id` | Nurse, Doctor | Generate an AI SOAP note from narrative and wound facts. |
 | `POST` | `/generate-report/:id` | Nurse | Generate and store an AI-assisted wound report. |
 | `POST` | `/generate-ai-report/:id` | Nurse | Alias for the same report-generation controller. |
 | `PATCH` | `/add-report/:id` | Nurse | Append manually supplied report metadata. |
@@ -662,7 +662,7 @@ Built-in monthly prices are CHF 19 for Basic, CHF 49 for Professional, and CHF 2
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/home` | Public | Doctor home/dashboard data. |
+| `GET` | `/home` | Doctor | Authenticated doctor's home/dashboard feed, scoped to the logged-in doctor. |
 | `GET` | `/patients` | Doctor | Authenticated doctor's patient list. |
 | `GET` | `/patients/:patientId` | Public | Patient details for doctor UI. |
 | `GET` | `/wound-cases/:woundCaseId` | Public | Wound case detail for doctor review. |
@@ -671,7 +671,108 @@ Built-in monthly prices are CHF 19 for Basic, CHF 49 for Professional, and CHF 2
 | `DELETE` | `/wound-cases/:woundCaseId/instructions/:instructionId` | Public | Delete doctor instructions. |
 | `PATCH` | `/tasks/:taskId/complete` | Public | Mark a task complete. |
 
-Only `GET /patients` has route-level doctor authentication in this route module.
+`GET /home` and `GET /patients` have route-level doctor authentication in this route module.
+
+#### `GET /api/doctor/home`
+
+Returns the authenticated doctor's home/feed summary.
+
+Required header:
+
+```http
+Authorization: Bearer <doctorToken>
+```
+
+The controller reads the doctor ID from `req.user.id`; it does not trust `doctor_id` from query parameters or the request body. Patient scope is:
+
+```text
+patients.doctor_id = authenticated doctor id
+OR patients.assigned_to = authenticated doctor id
+```
+
+Wound cases are fetched only for those scoped patients. Tasks are fetched where `tasks.assigned_to` equals the authenticated doctor ID.
+
+Success response shape:
+
+```json
+{
+  "message": "Doctor home fetched successfully",
+  "doctor": {
+    "id": 12,
+    "name": "Dr. Ahmed",
+    "title": "Consultant"
+  },
+  "stats": {
+    "patients": 2,
+    "wounds": 3,
+    "tasks": 1,
+    "reports": 4
+  },
+  "my_tasks": [
+    {
+      "id": 5,
+      "title": "Review wound progress",
+      "description": "Check latest wound images",
+      "task_type": "review",
+      "priority": "high",
+      "status": "pending",
+      "patient_id": 10,
+      "patient_name": "Ali Khan",
+      "wound_case": null,
+      "due_date": "2026-08-14",
+      "due_time": "10:00",
+      "created_at": "2026-08-13T09:00:00.000Z"
+    }
+  ],
+  "assigned_patients": [
+    {
+      "id": 10,
+      "initials": "AK",
+      "name": "Ali Khan",
+      "mrn": "MRN-001",
+      "age": 45,
+      "gender": "male",
+      "room": "203",
+      "ward": "Ward A",
+      "wound_type": "Diabetic foot ulcer",
+      "diagnosis": "Diabetes",
+      "assigned_nurse": "Nurse Sara",
+      "last_activity_at": "2026-08-13T08:30:00.000Z",
+      "active_wound_cases_count": 1
+    }
+  ]
+}
+```
+
+For a newly signed-up doctor with no assigned or owned patients, the same endpoint returns zero counts with empty arrays:
+
+```json
+{
+  "message": "Doctor home fetched successfully",
+  "doctor": {
+    "id": 12,
+    "name": "Dr. Ahmed",
+    "title": "Consultant"
+  },
+  "stats": {
+    "patients": 0,
+    "wounds": 0,
+    "tasks": 0,
+    "reports": 0
+  },
+  "my_tasks": [],
+  "assigned_patients": []
+}
+```
+
+Response notes:
+
+- `stats.patients` counts scoped doctor patients.
+- `stats.wounds` counts scoped wound cases whose status is `active`, `monitoring`, or `healing`.
+- `stats.tasks` counts pending tasks assigned to the doctor.
+- `stats.reports` counts report entries stored on scoped wound cases.
+- `my_tasks` includes up to five pending assigned tasks.
+- `assigned_patients` includes up to six latest scoped patients.
 
 ### 10.13 Doctor-owned patients — `/api/doctor/patients`
 

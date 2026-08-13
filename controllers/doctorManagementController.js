@@ -271,16 +271,33 @@ const validateInstruction = (instruction) => {
 
 const getHome = async (req, res) => {
   try {
-    const doctorId = getDoctorId(req);
-    const doctor = doctorId ? await User.findByPk(doctorId) : null;
-    const [patients, woundCases, tasks] = await Promise.all([
-      Patient.findAll({ order: [['createdAt', 'DESC']] }),
-      WoundCase.findAll({ order: [['last_updated_at', 'DESC']] }),
+    const doctorId = Number(req.user?.id);
+
+    if (!Number.isInteger(doctorId) || doctorId <= 0) {
+      return res.status(401).json({ message: 'Authenticated doctor is required' });
+    }
+
+    const patientWhere = {
+      [Op.or]: [{ doctor_id: doctorId }, { assigned_to: doctorId }],
+    };
+    const doctor = req.user;
+    const [patients, tasks] = await Promise.all([
+      Patient.findAll({
+        where: patientWhere,
+        order: [['createdAt', 'DESC']],
+      }),
       Task.findAll({
-        where: doctorId ? { assigned_to: doctorId } : {},
+        where: { assigned_to: doctorId },
         order: [['createdAt', 'DESC']],
       }),
     ]);
+    const patientIds = patients.map((patient) => patient.id);
+    const woundCases = patientIds.length
+      ? await WoundCase.findAll({
+          where: { patient_id: patientIds },
+          order: [['last_updated_at', 'DESC']],
+        })
+      : [];
     const patientMap = new Map(patients.map((patient) => [Number(patient.id), patient]));
     const activeTasks = tasks.filter((task) => task.status === 'pending');
     const activeWounds = woundCases.filter((woundCase) =>

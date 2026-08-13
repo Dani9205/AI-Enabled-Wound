@@ -13,7 +13,7 @@ const { authenticateToken, requireRoles } = require('../middleware/authMiddlewar
 
 const router = express.Router();
 
-router.get('/home', getHome);
+router.get('/home', authenticateToken, requireRoles('doctor'), getHome);
 router.get('/patients', authenticateToken, requireRoles('doctor'), getPatients);
 router.get('/patients/:patientId', getPatientDetails);
 router.get('/wound-cases/:woundCaseId', getWoundCaseDetails);
