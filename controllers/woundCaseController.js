@@ -100,7 +100,7 @@ const getScopedWoundCase = async (req, id) => {
   }
 
   if (isDoctor(req)) {
-    patientWhere.doctor_id = req.user.id;
+    patientWhere[Op.or] = [{ doctor_id: req.user.id }, { assigned_to: req.user.id }];
   }
 
   const patient = await Patient.findOne({
