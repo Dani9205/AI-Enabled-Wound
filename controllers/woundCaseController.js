@@ -23,6 +23,12 @@ const cleanString = (value) => {
   return trimmed || undefined;
 };
 
+const normalizeOutputLanguage = (value) =>
+  cleanString(value)
+    ?.replace(/[^\p{L}\p{N}\s().,_-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 80) || 'English';
+
 const getBodyValue = (body, field) => {
   const camelField = field.replace(/_([a-z])/g, (_, letter) =>
     letter.toUpperCase()
@@ -183,6 +189,7 @@ const formatClinicalNote = (note) => ({
   title: cleanString(note.title) || null,
   text: cleanString(note.text || note.note || note.clinical_note || note.clinicalNote),
   soap: note.soap || note.soap_note || note.soapNote || null,
+  language: cleanString(note.language || note.output_language || note.outputLanguage) || null,
   audio_url: cleanString(note.audio_url || note.audioUrl) || null,
   audio_file_path: cleanString(note.audio_file_path || note.audioFilePath) || null,
   audio_original_name: cleanString(note.audio_original_name || note.audioOriginalName) || null,
@@ -847,7 +854,7 @@ const parseSoapNoteResponse = (body) => {
   return normalizedSoap;
 };
 
-const callOpenAiSoapService = async ({ woundCase, text, instructions }) => {
+const callOpenAiSoapService = async ({ woundCase, text, instructions, language }) => {
   const apiKey = cleanString(process.env.OPENAI_API_KEY);
 
   if (!apiKey) {
@@ -865,11 +872,12 @@ const callOpenAiSoapService = async ({ woundCase, text, instructions }) => {
     {
       role: 'system',
       content:
-        'You are a clinical documentation assistant. Convert the supplied wound-care narrative and case facts into a concise professional SOAP note. Synthesize and reorganize the information instead of copying the narrative verbatim. Do not invent facts, diagnoses, examination findings, treatments, or patient statements. Clearly state when clinically relevant information is not documented. Return only JSON containing the string fields subjective, objective, assessment, and plan.',
+        `You are a clinical documentation assistant. Convert the supplied wound-care narrative and case facts into a concise professional SOAP note. Write every SOAP section in ${language}. Synthesize and reorganize the information instead of copying the narrative verbatim. Do not invent facts, diagnoses, examination findings, treatments, or patient statements. Clearly state when clinically relevant information is not documented. Return only JSON containing the string fields subjective, objective, assessment, and plan.`,
     },
     {
       role: 'user',
       content: JSON.stringify({
+        output_language: language,
         clinical_narrative: text || null,
         wound_case: {
           wound_type: woundCase.wound_type,
@@ -940,8 +948,9 @@ const callOpenAiSoapService = async ({ woundCase, text, instructions }) => {
  *
  * Uses `text`, `clinical_note`, or `clinicalNote` as the source narrative, falling
  * back to the wound case notes. Optional AI guidance can be supplied through
- * `instructions`, `ai_instructions`, or `aiInstructions`. The generated note is
- * appended to the case's `clinical_notes` JSON collection.
+ * `instructions`, `ai_instructions`, or `aiInstructions`. Optional output language
+ * can be supplied through `language`, `output_language`, or `outputLanguage`.
+ * The generated note is appended to the case's `clinical_notes` JSON collection.
  *
  * @param {import('express').Request} req Nurse-authenticated request with wound case ID.
  * @param {import('express').Response} res Express response containing the saved note.
@@ -959,9 +968,13 @@ const generateSoapNote = async (req, res) => {
       cleanString(req.body.text || req.body.clinical_note || req.body.clinicalNote) ||
       cleanString(woundCase.notes) ||
       '';
+    const language = normalizeOutputLanguage(
+      req.body.language || req.body.output_language || req.body.outputLanguage
+    );
     const aiResult = await callOpenAiSoapService({
       woundCase,
       text,
+      language,
       instructions: req.body.instructions || req.body.ai_instructions || req.body.aiInstructions,
     });
     const note = formatClinicalNote({
@@ -969,6 +982,7 @@ const generateSoapNote = async (req, res) => {
       title: 'AI SOAP Note',
       text,
       soap: aiResult.soap,
+      language,
       is_ai_generated: true,
       created_by: req.body.created_by || req.body.createdBy,
     });
@@ -982,6 +996,7 @@ const generateSoapNote = async (req, res) => {
       message: 'SOAP note generated successfully',
       clinical_note: note,
       ai_model: aiResult.model,
+      language,
     });
   } catch (error) {
     return res.status(500).json({
@@ -1308,6 +1323,102 @@ const transcribeAudioFile = async (filePath) => {
   });
 
   return parseWhisperResponseText(responseBody);
+};
+
+const parseTranslationResponseText = (body) => {
+  const normalizedBody = cleanString(body)
+    ?.replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+
+  if (!normalizedBody) {
+    throw new Error('OpenAI returned an empty translated transcript');
+  }
+
+  try {
+    const parsed = JSON.parse(normalizedBody);
+    return cleanString(parsed.text || parsed.transcript || parsed.translation || parsed.output);
+  } catch (error) {
+    return normalizedBody;
+  }
+};
+
+const translateTranscript = async ({ transcript, language }) => {
+  const apiKey = cleanString(process.env.OPENAI_API_KEY);
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is required for transcript language conversion');
+  }
+
+  const openai = new OpenAI({ apiKey });
+  const modelCandidates = [
+    cleanString(process.env.OPENAI_TRANSLATION_MODEL),
+    cleanString(process.env.OPENAI_SOAP_MODEL),
+    cleanString(process.env.OPENAI_REPORT_MODEL),
+    'gpt-4.1-mini',
+  ].filter((model, index, models) => model && models.indexOf(model) === index);
+  const modelErrors = [];
+  const input = [
+    {
+      role: 'system',
+      content:
+        `Convert the provided voice transcription into ${language}. Preserve all clinical meaning, wound-care details, measurements, medication names, and uncertainty. Do not add facts. Return only JSON with one string field named text.`,
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        output_language: language,
+        transcript,
+      }),
+    },
+  ];
+
+  for (const model of modelCandidates) {
+    try {
+      const response = await openai.responses.create({
+        model,
+        input,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'translated_transcript',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                text: { type: 'string' },
+              },
+              required: ['text'],
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+      const translatedText = parseTranslationResponseText(response.output_text);
+
+      if (!translatedText) {
+        throw new Error('OpenAI returned an empty translated transcript');
+      }
+
+      return {
+        text: translatedText,
+        model,
+      };
+    } catch (error) {
+      const code = error.code || error.error?.code;
+      const status = error.status || error.statusCode;
+      const message = error.message || 'OpenAI request failed';
+
+      if (status === 401 || status === 403 || status === 429) {
+        throw new Error(`Transcript language conversion failed: ${message}`);
+      }
+
+      modelErrors.push(`${model}: ${code || status || 'error'} ${message}`);
+    }
+  }
+
+  throw new Error(
+    `Transcript language conversion failed for all models: ${modelErrors.join(' | ')}`
+  );
 };
 
 const parseAiReportResponse = (body) => {
@@ -1707,17 +1818,32 @@ const transcribeVoiceDictation = async (req, res) => {
       });
     }
 
-    const transcript = await transcribeAudioFile(localAudioPath);
+    const rawTranscript = await transcribeAudioFile(localAudioPath);
 
-    if (!transcript) {
+    if (!rawTranscript) {
       return res.status(422).json({ message: 'Audio transcription returned no text' });
     }
+
+    const language = normalizeOutputLanguage(
+      req.body.language ||
+        req.body.output_language ||
+        req.body.outputLanguage ||
+        existingNote?.language ||
+        existingNote?.output_language ||
+        existingNote?.outputLanguage
+    );
+    const translatedTranscript = await translateTranscript({
+      transcript: rawTranscript,
+      language,
+    });
+    const transcript = translatedTranscript.text;
 
     const note = formatClinicalNote({
       ...(existingNote || {}),
       note_type: 'voice',
       title: req.body.title || existingNote?.title || 'Voice Note',
       text: transcript,
+      language,
       audio_url:
         uploadedVoiceData.audio_url ||
         existingNote?.audio_url ||
@@ -1763,6 +1889,9 @@ const transcribeVoiceDictation = async (req, res) => {
     return res.status(noteIndex >= 0 ? 200 : 201).json({
       message: 'Voice transcribed successfully',
       transcript,
+      raw_transcript: rawTranscript,
+      language,
+      translation_model: translatedTranscript.model,
       clinical_note: note,
       wound_case: woundCaseResponse(woundCase),
     });

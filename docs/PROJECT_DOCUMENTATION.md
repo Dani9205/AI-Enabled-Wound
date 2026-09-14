@@ -566,8 +566,8 @@ Most endpoints require a nurse bearer token and scope patient/wound access to th
 | `PATCH` | `/add-measurement/:id` | Nurse | Append a measurement record. |
 | `PATCH` | `/add-note/:id` | Nurse | Append a manual/structured clinical note. |
 | `POST` | `/save-voice-dictation/:id` | Nurse, Doctor | Save an uploaded/local audio reference and/or supplied transcript as a voice note. |
-| `POST` | `/transcribe-voice-dictation/:id/:noteId?` | Nurse | Transcribe uploaded or previously saved local audio and save the transcript. |
-| `POST` | `/generate-soap-note/:id` | Nurse, Doctor | Generate an AI SOAP note from narrative and wound facts. |
+| `POST` | `/transcribe-voice-dictation/:id/:noteId?` | Nurse | Transcribe uploaded or previously saved local audio, convert the transcript to the requested output language, and save it as a voice note. |
+| `POST` | `/generate-soap-note/:id` | Nurse, Doctor | Generate an AI SOAP note from narrative and wound facts in the requested output language. |
 | `POST` | `/generate-report/:id` | Nurse | Generate and store an AI-assisted wound report. |
 | `POST` | `/generate-ai-report/:id` | Nurse | Alias for the same report-generation controller. |
 | `PATCH` | `/add-report/:id` | Nurse | Append manually supplied report metadata. |
@@ -799,6 +799,9 @@ All endpoints require a doctor bearer token and constrain access through doctor-
 | `POST` | `/` | Doctor | Create wound case for an owned patient. |
 | `GET` | `/` | Doctor | List wound cases for owned patients. |
 | `GET` | `/:woundCaseId` | Doctor | Get one owned wound case. |
+| `POST` | `/:woundCaseId/save-voice-dictation` | Doctor | Save an uploaded/local audio reference and/or supplied transcript as a voice note. |
+| `POST` | `/:woundCaseId/transcribe-voice-dictation/:noteId?` | Doctor | Transcribe uploaded or previously saved local audio, convert the transcript to the requested output language, and save it as a voice note. |
+| `POST` | `/:woundCaseId/generate-soap-note` | Doctor | Generate an AI SOAP note from narrative and wound facts in the requested output language. |
 | `PUT` | `/:woundCaseId` | Doctor | Update an owned wound case. |
 | `PATCH` | `/:woundCaseId` | Doctor | Partially update an owned wound case. |
 | `DELETE` | `/:woundCaseId` | Doctor | Delete an owned wound case. |
@@ -1072,19 +1075,140 @@ Controllers normalize old/new snake-case and camel-case shapes when returning th
 Two related endpoints exist:
 
 - `save-voice-dictation`: stores supplied transcript text and/or uploaded audio metadata. It does not perform speech-to-text.
-- `transcribe-voice-dictation`: uploads audio or reuses a saved local audio path, sends it to `WHISPER_SERVICE_URL`, and stores the returned text as a voice clinical note.
+- `transcribe-voice-dictation`: uploads audio or reuses a saved local audio path, sends it to `WHISPER_SERVICE_URL`, converts the transcript to the requested output language, and stores the converted text as a voice clinical note.
 
 The configured service receives multipart audio and an optional `model` field. An optional bearer service token is sent from `WHISPER_SERVICE_API_KEY`.
 
+Frontend routes:
+
+| Role | Method | Path |
+|---|---|---|
+| Nurse | `POST` | `/api/wound-cases/transcribe-voice-dictation/:id/:noteId?` |
+| Doctor | `POST` | `/api/doctor/wound-cases/:woundCaseId/transcribe-voice-dictation/:noteId?` |
+
+Request headers:
+
+```http
+Authorization: Bearer <nurse_or_doctor_token>
+Content-Type: multipart/form-data
+```
+
+Form-data fields:
+
+| Field | Required | Notes |
+|---|---:|---|
+| `audio` | Conditional | Audio upload. Aliases also accepted: `voice`, `file`, `voice_file`, `voiceFile`, `audio_file`, `audioFile`. Required when `noteId` is not reusing a saved local audio file. |
+| `language` | No | Desired output language, for example `English`, `Spanish`, `Urdu`, or `Australian English`. Defaults to `English`. |
+| `output_language` / `outputLanguage` | No | Alternative names for `language`. |
+| `title` | No | Defaults to `Voice Note`. |
+| `duration_seconds` / `durationSeconds` | No | Optional audio duration metadata. |
+| `created_by` / `createdBy` | No | Optional display name/id for note creator. |
+
+Example request:
+
+```txt
+POST /api/doctor/wound-cases/123/transcribe-voice-dictation
+audio = wound-note.m4a
+language = Spanish
+title = Follow-up Voice Note
+```
+
+Success response when creating a new note returns `201`; updating an existing `noteId` returns `200`:
+
+```json
+{
+  "message": "Voice transcribed successfully",
+  "transcript": "El paciente informa dolor y secrecion de la herida.",
+  "raw_transcript": "Patient reports pain and drainage from the wound.",
+  "language": "Spanish",
+  "translation_model": "gpt-4.1-mini",
+  "clinical_note": {
+    "id": "note_...",
+    "note_type": "voice",
+    "title": "Follow-up Voice Note",
+    "text": "El paciente informa dolor y secrecion de la herida.",
+    "language": "Spanish",
+    "audio_url": "https://example.com/uploads/voice-dictations/file.m4a",
+    "audio_file_path": "/uploads/voice-dictations/file.m4a",
+    "duration_seconds": 24,
+    "created_at": "2026-09-14T00:00:00.000Z"
+  },
+  "wound_case": {}
+}
+```
+
+`raw_transcript` is the speech-to-text output before language conversion. `transcript` and `clinical_note.text` are the final requested-language text that the UI should display.
+
 ### 11.10 AI SOAP notes
 
-`POST /api/wound-cases/generate-soap-note/:id` sends the clinical narrative and wound-case context to the OpenAI Responses API. It requests a structured SOAP note and stores the result in `clinical_notes`.
+SOAP generation sends the clinical narrative and wound-case context to the OpenAI Responses API. It requests a structured SOAP note in the requested output language and stores the result in `clinical_notes`.
+
+Frontend routes:
+
+| Role | Method | Path |
+|---|---|---|
+| Nurse | `POST` | `/api/wound-cases/generate-soap-note/:id` |
+| Doctor | `POST` | `/api/doctor/wound-cases/:woundCaseId/generate-soap-note` |
+
+Request headers:
+
+```http
+Authorization: Bearer <nurse_or_doctor_token>
+Content-Type: application/json
+```
+
+Request body:
+
+| Field | Required | Notes |
+|---|---:|---|
+| `text` | No | Clinical narrative. If omitted, the wound case `notes` field is used when available. |
+| `clinical_note` / `clinicalNote` | No | Alternative names for `text`. |
+| `language` | No | Desired SOAP output language, for example `English`, `Spanish`, `Urdu`, or `Australian English`. Defaults to `English`. |
+| `output_language` / `outputLanguage` | No | Alternative names for `language`. |
+| `instructions` | No | Optional extra AI guidance. |
+| `ai_instructions` / `aiInstructions` | No | Alternative names for `instructions`. |
+| `created_by` / `createdBy` | No | Optional display name/id for note creator. |
+
+Example request:
+
+```json
+{
+  "text": "Patient reports pain and drainage from the left heel wound.",
+  "language": "Spanish",
+  "instructions": "Keep the note concise."
+}
+```
+
+Success response:
+
+```json
+{
+  "message": "SOAP note generated successfully",
+  "clinical_note": {
+    "id": "note_...",
+    "note_type": "soap",
+    "title": "AI SOAP Note",
+    "text": "Patient reports pain and drainage from the left heel wound.",
+    "soap": {
+      "subjective": "El paciente informa dolor y secrecion...",
+      "objective": "Herida en el talon izquierdo...",
+      "assessment": "Ulcera activa que requiere seguimiento...",
+      "plan": "Continuar cuidados de la herida..."
+    },
+    "language": "Spanish",
+    "is_ai_generated": true,
+    "created_at": "2026-09-14T00:00:00.000Z"
+  },
+  "ai_model": "gpt-4.1-mini",
+  "language": "Spanish"
+}
+```
 
 Requirements:
 
 - `OPENAI_API_KEY`.
 - Narrative text/instructions sufficient for generation.
-- Nurse bearer token and scoped wound case.
+- Nurse or doctor bearer token and scoped wound case.
 
 AI clinical output must be reviewed by qualified clinical staff before use.
 

@@ -289,6 +289,7 @@ const main = async () => {
     });
     await expectStatus('wound generate soap', 'POST', `/api/wound-cases/generate-soap-note/${created.woundCaseId}`, 200, {
       text: 'Smoke SOAP input',
+      language: 'English',
     });
     const report = await expectStatus('wound generate report', 'POST', `/api/wound-cases/generate-report/${created.woundCaseId}`, 201, {
       title: 'Smoke Complete Wound Report',
