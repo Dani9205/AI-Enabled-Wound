@@ -55,6 +55,15 @@ const parseNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : NaN;
 };
 
+const parseDate = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? NaN : parsed;
+};
+
 const asArray = (value) => {
   if (!value) {
     return [];
@@ -239,6 +248,7 @@ const formatWoundUpdate = (update) => ({
   instructions: cleanString(update.instructions || update.doctor_instructions || update.doctorInstructions) || null,
   frequency: cleanString(update.frequency) || null,
   next_review_at: update.next_review_at || update.nextReviewAt || null,
+  wound_date: update.wound_date || update.woundDate || null,
   images_count: asArray(update.images).length,
   created_by: cleanString(update.created_by || update.createdBy) || null,
   created_at: update.created_at || update.createdAt || currentTimestamp(),
@@ -342,10 +352,34 @@ const buildWoundCasePayload = (body, { partial = false } = {}) => {
   });
 
   if (!partial) {
+    const woundDate =
+      getBodyValue(body, 'wound_date') ??
+      body.date;
+
+    if (woundDate !== undefined && woundDate !== null && woundDate !== '') {
+      const parsedWoundDate = parseDate(woundDate);
+      payload.wound_date = Number.isNaN(parsedWoundDate)
+        ? parsedWoundDate
+        : parsedWoundDate.toISOString();
+    }
+
     payload.status = payload.status || 'active';
     payload.images = asArray(body.images).map(formatImage).filter((image) => image.url);
     payload.measurements = asArray(body.measurements).map(formatMeasurement);
     payload.updates = asArray(body.updates).map(formatWoundUpdate);
+
+    if (payload.wound_date && !Number.isNaN(payload.wound_date)) {
+      payload.updates = [
+        formatWoundUpdate({
+          title: 'Wound occurred',
+          summary: 'Wound date recorded',
+          wound_date: payload.wound_date,
+          created_at: payload.wound_date,
+        }),
+        ...payload.updates,
+      ];
+    }
+
     payload.clinical_notes = asArray(body.clinical_notes || body.clinicalNotes)
       .map(formatClinicalNote)
       .filter((note) => note.text || note.soap || note.audio_url);
@@ -407,6 +441,10 @@ const validateWoundCasePayload = (payload, { partial = false } = {}) => {
     return `${invalidMeasurementField} must be 0 or greater`;
   }
 
+  if (payload.wound_date !== undefined && Number.isNaN(payload.wound_date)) {
+    return 'wound_date must be a valid date';
+  }
+
   return null;
 };
 
@@ -446,7 +484,8 @@ const createWoundCase = async (req, res) => {
       payload.measurements = [initialMeasurement, ...payload.measurements];
     }
 
-    const woundCase = await WoundCase.create(payload);
+    const { wound_date, ...woundCasePayload } = payload;
+    const woundCase = await WoundCase.create(woundCasePayload);
 
     return res.status(201).json({
       message: 'Wound case created successfully',
