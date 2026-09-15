@@ -139,29 +139,6 @@ const getMeasurementDimensions = (value = {}) => ({
   depth_cm: parseNumber(value.depth_cm ?? value.depthCm ?? value.depth),
 });
 
-const getPrefixedMeasurement = (body, prefix) => ({
-  length_cm:
-    body[`${prefix}_length_cm`] ??
-    body[`${prefix}LengthCm`] ??
-    body[`${prefix}_length`] ??
-    body[`${prefix}Length`],
-  width_cm:
-    body[`${prefix}_width_cm`] ??
-    body[`${prefix}WidthCm`] ??
-    body[`${prefix}_width`] ??
-    body[`${prefix}Width`],
-  depth_cm:
-    body[`${prefix}_depth_cm`] ??
-    body[`${prefix}DepthCm`] ??
-    body[`${prefix}_depth`] ??
-    body[`${prefix}Depth`],
-});
-
-const hasAnyMeasurementValue = (value = {}) =>
-  ['length_cm', 'lengthCm', 'length', 'width_cm', 'widthCm', 'width', 'depth_cm', 'depthCm', 'depth'].some(
-    (field) => value[field] !== undefined && value[field] !== null && value[field] !== ''
-  );
-
 const validateMeasurementDimensions = (
   dimensions,
   label,
@@ -219,11 +196,26 @@ const calculateDimensionHealing = (original, comparison) => {
   };
 };
 
-const sameDimensions = (first, second) =>
-  ['length_cm', 'width_cm', 'depth_cm'].every(
-    (field) => Number(first[field]) === Number(second[field])
-  );
+const validSavedMeasurementRecords = (measurements, { allowZero = false } = {}) =>
+  measurements
+    .map((measurement, index) => ({
+      ...formatMeasurement(measurement, index),
+      original_index: index,
+    }))
+    .filter((measurement) =>
+      hasValidMeasurementDimensions(getMeasurementDimensions(measurement), { allowZero })
+    );
 
+
+
+
+
+
+
+
+
+
+    
 const getHealingProgress = async (req, res) => {
   try {
     const { woundCase, patient, error } = await getWoundCaseWithPatient(
@@ -232,49 +224,34 @@ const getHealingProgress = async (req, res) => {
 
     if (error) return res.status(404).json({ message: error });
 
-    const prefixedOriginal = getPrefixedMeasurement(req.body, 'original');
-    const originalInput =
-      req.body.original_measurements ||
-      req.body.originalMeasurements ||
-      req.body.original_measurement ||
-      req.body.originalMeasurement ||
-      (hasAnyMeasurementValue(prefixedOriginal) ? prefixedOriginal : req.body);
-    const original = getMeasurementDimensions(originalInput);
-    const originalError = validateMeasurementDimensions(
-      original,
-      'original_measurements'
-    );
+    const history = asArray(woundCase.measurements);
+    const validOriginalRecords = validSavedMeasurementRecords(history);
+    const validLatestRecords = validSavedMeasurementRecords(history, { allowZero: true });
 
-    if (originalError) {
-      return res.status(400).json({ message: originalError });
+    if (!validOriginalRecords.length) {
+      return res.status(422).json({
+        message: 'Original wound measurement is not available',
+        error:
+          'At least one saved measurement with length_cm, width_cm, and depth_cm greater than 0 is required',
+      });
     }
 
-    const history = asArray(woundCase.measurements).map(formatMeasurement);
-    const prefixedLatest = getPrefixedMeasurement(req.body, 'latest');
-    const requestLatestMeasurement =
-      req.body.latest_measurements ||
-      req.body.latestMeasurements ||
-      req.body.latest_measurement ||
-      req.body.latestMeasurement ||
-      (hasAnyMeasurementValue(prefixedLatest) ? prefixedLatest : null);
-    const currentWoundMeasurement = {
-      length_cm: woundCase.length_cm,
-      width_cm: woundCase.width_cm,
-      depth_cm: woundCase.depth_cm,
-      date: woundCase.last_updated_at || woundCase.updatedAt,
-    };
-    const historyLatestRecord = history[history.length - 1] || null;
-    const currentDimensions = getMeasurementDimensions(currentWoundMeasurement);
-    const historyLatestDimensions = getMeasurementDimensions(historyLatestRecord || {});
-    const usesRequestLatestMeasurement = Boolean(requestLatestMeasurement);
-    const usesCurrentWoundMeasurement =
-      !usesRequestLatestMeasurement &&
-      hasValidMeasurementDimensions(currentDimensions, { allowZero: true });
-    const latestRecord = usesRequestLatestMeasurement
-      ? requestLatestMeasurement
-      : usesCurrentWoundMeasurement
-        ? currentWoundMeasurement
-        : historyLatestRecord || {};
+    const originalRecord = validOriginalRecords[0];
+    const original = getMeasurementDimensions(originalRecord);
+    const latestRecord = validLatestRecords[validLatestRecords.length - 1] || null;
+
+    if (
+      !latestRecord ||
+      validLatestRecords.length < 2 ||
+      latestRecord.original_index === originalRecord.original_index
+    ) {
+      return res.status(422).json({
+        message: 'Latest wound measurement is not available',
+        error:
+          'At least two saved measurements with length_cm, width_cm, and depth_cm are required to calculate healing progress',
+      });
+    }
+
     const latest = getMeasurementDimensions(latestRecord);
     const latestError = validateMeasurementDimensions(
       latest,
@@ -289,15 +266,10 @@ const getHealingProgress = async (req, res) => {
       });
     }
 
-    const historyLatestMatchesCurrent =
-      historyLatestRecord &&
-      hasValidMeasurementDimensions(historyLatestDimensions, { allowZero: true }) &&
-      sameDimensions(historyLatestDimensions, latest);
-    const previousRecord = historyLatestMatchesCurrent
-      ? history.length > 1
-        ? history[history.length - 2]
-        : null
-      : historyLatestRecord;
+    const previousRecord =
+      validLatestRecords.length > 1
+        ? validLatestRecords[validLatestRecords.length - 2]
+        : null;
     const previous = previousRecord
       ? getMeasurementDimensions(previousRecord)
       : original;
@@ -338,6 +310,8 @@ const getHealingProgress = async (req, res) => {
         ...original,
         volume_cm3: originalVolume,
         healing_percentage: 0,
+        measured_at: originalRecord.date || null,
+        source: 'measurement_history',
       },
       previous_measurement: {
         ...previous,
@@ -352,11 +326,7 @@ const getHealingProgress = async (req, res) => {
         healing_percentage: currentHealing.percentage,
         dimension_reductions: currentHealing.reductions,
         measured_at: latestRecord.date || null,
-        source: usesRequestLatestMeasurement
-          ? 'request_latest_measurement'
-          : usesCurrentWoundMeasurement
-            ? 'wound_case_current_measurement'
-            : 'measurement_history',
+        source: 'measurement_history',
       },
       healing_progress: {
         percentage: currentHealing.percentage,
@@ -375,6 +345,16 @@ const getHealingProgress = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+
+
+
 
 const diff = (current, previous) => {
   const currentNumber = parseNumber(current);
