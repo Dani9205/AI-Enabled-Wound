@@ -27,6 +27,12 @@ const parseNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : NaN;
 };
 
+const parseDate = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? NaN : parsed;
+};
+
 const asArray = (value) => {
   if (Array.isArray(value)) return value;
   if (!value) return [];
@@ -96,6 +102,30 @@ const buildPayload = (body, partial = false) => {
     if (value !== undefined || !partial) payload[field] = asArray(value);
   });
 
+  if (!partial) {
+    const woundDate = bodyValue(body, 'wound_date') ?? body.date;
+
+    if (woundDate !== undefined && woundDate !== null && woundDate !== '') {
+      const parsedWoundDate = parseDate(woundDate);
+      payload.wound_date = Number.isNaN(parsedWoundDate)
+        ? parsedWoundDate
+        : parsedWoundDate.toISOString();
+    }
+
+    if (payload.wound_date && !Number.isNaN(payload.wound_date)) {
+      payload.updates = [
+        {
+          id: `update_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          title: 'Wound occurred',
+          summary: 'Wound date recorded',
+          wound_date: payload.wound_date,
+          created_at: payload.wound_date,
+        },
+        ...payload.updates,
+      ];
+    }
+  }
+
   payload.last_updated_at = new Date();
   return payload;
 };
@@ -129,7 +159,11 @@ const validatePayload = (payload, partial = false) => {
       payload[field] !== null &&
       (Number.isNaN(payload[field]) || payload[field] < 0)
   );
-  return invalidSize ? `${invalidSize} must be 0 or greater` : null;
+  if (invalidSize) return `${invalidSize} must be 0 or greater`;
+  if (payload.wound_date !== undefined && Number.isNaN(payload.wound_date)) {
+    return 'wound_date must be a valid date';
+  }
+  return null;
 };
 
 const getDoctorId = (req) => {
@@ -169,7 +203,8 @@ const createWoundCase = async (req, res) => {
     const patient = await findOwnedPatient(payload.patient_id, doctorId);
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
-    const woundCase = await WoundCase.create(payload);
+    const { wound_date, ...woundCasePayload } = payload;
+    const woundCase = await WoundCase.create(woundCasePayload);
     return res.status(201).json({
       message: 'Wound case created successfully',
       wound_case: response(woundCase),
