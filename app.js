@@ -57,6 +57,7 @@ app.use('/api/handoffs', handoffRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin/approval-settings', require('./routes/approvalSettingRoutes'));
 app.use('/api/doctor/auth', doctorAuthRoutes);
 app.use('/api/patient/auth', patientAuthRoutes);
 app.use('/api/patient/app', patientAppRoutes);

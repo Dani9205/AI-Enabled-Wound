@@ -1,3 +1,4 @@
+const { getSignupApprovalFields } = require('../utils/approvalPolicy');
 const User = require('../models/userModel');
 const { Op } = require('sequelize');
 const { sendEmailCode } = require('../utils/mailer');
@@ -385,7 +386,7 @@ const setAccountPassword = async (req, res) => {
       role: PATIENT_ROLE,
       password_hash: hashPassword(password),
       request_accepted: false,
-      request_status: 'none',
+      ...(await getSignupApprovalFields()),
       terms_accepted: true,
       terms_accepted_at: new Date(),
       fcm_token: fcmToken || null,

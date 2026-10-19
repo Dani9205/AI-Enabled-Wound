@@ -1,3 +1,4 @@
+const { getSignupApprovalFields } = require('../utils/approvalPolicy');
 const User = require('../models/userModel');
 const { Op } = require('sequelize');
 const { sendEmailCode } = require('../utils/mailer');
@@ -351,7 +352,7 @@ const createAccount = async (req, res) => {
       profile_photo_url,
       role,
       password_hash: hashPassword(password),
-      request_status: 'none',
+      ...(await getSignupApprovalFields()),
       terms_accepted: true,
       terms_accepted_at: new Date(),
       fcm_token: fcmToken || null,
@@ -511,7 +512,7 @@ const createOrganizationAccount = async (req, res) => {
       role,
       password_hash: hashPassword(password),
       request_accepted: false,
-      request_status: 'none',
+      ...(await getSignupApprovalFields()),
       terms_accepted: true,
       terms_accepted_at: new Date(),
       fcm_token: fcmToken || null,
@@ -934,7 +935,7 @@ const verifySigninCode = async (req, res) => {
         verification_code_expires_at: null,
         verification_purpose: null,
         is_email_verified: true,
-        ...(purpose === 'signup' ? { request_status: 'pending' } : {}),
+        ...(purpose === 'signup' ? await getSignupApprovalFields('pending', user) : {}),
         last_login_at: now,
         auth_token: token,
       },
@@ -964,7 +965,9 @@ const verifySigninCode = async (req, res) => {
         purpose === 'signup'
           ? 'Account verified successfully'
           : 'Login successful',
-      ...(purpose === 'signup' ? { next_step: 'pending-approval' } : {}),
+      ...(purpose === 'signup' ? {
+        next_step: verifiedUser.request_status === 'accepted' ? 'signin' : 'pending-approval',
+      } : {}),
       token,
       user: publicUser(verifiedUser),
     });

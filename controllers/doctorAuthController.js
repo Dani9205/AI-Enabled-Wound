@@ -1,3 +1,4 @@
+const { getSignupApprovalFields } = require('../utils/approvalPolicy');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const sequelize = require('../config/db');
@@ -539,7 +540,7 @@ const setAccountPassword = async (req, res) => {
           role: DOCTOR_ROLE,
           password_hash: hashPassword(password),
           request_accepted: false,
-          request_status: 'none',
+          ...(await getSignupApprovalFields()),
           terms_accepted: true,
           terms_accepted_at: new Date(),
           fcm_token: fcmToken || null,
